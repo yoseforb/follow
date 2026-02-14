@@ -1,0 +1,13 @@
+# Sub-repos (independent git repos, co-located by convention)
+follow-api/
+follow-image-gateway/
+follow-app/
+follow-pkg/
+follow-business/
+follow-app-worktrees/
+
+# OS
+.DS_Store
+
+# Serena
+.serena/

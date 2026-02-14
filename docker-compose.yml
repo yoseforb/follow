@@ -1,0 +1,167 @@
+# Master Docker Compose — Full-Stack Follow Platform
+#
+# Combines infrastructure from follow-api and follow-image-gateway into a
+# unified development environment. Each sub-repo keeps its own compose file
+# for isolated development; this file orchestrates the full stack.
+#
+# Usage:
+#   docker compose up -d              # Start everything
+#   docker compose up -d postgres     # Start just the database
+#   docker compose logs -f follow-api # Tail API logs
+#
+# Per-repo isolated development (unchanged):
+#   cd follow-api && docker compose up -d
+#   cd follow-image-gateway && docker compose up -d
+
+services:
+  # ── Infrastructure ─────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: follow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: follow
+      POSTGRES_USER: follow
+      POSTGRES_PASSWORD: follow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U follow -d follow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  valkey:
+    image: valkey/valkey:8
+    container_name: follow-valkey
+    restart: unless-stopped
+    command: valkey-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - valkey_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: minio/minio:latest
+    container_name: follow-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - internal
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      mc mb --ignore-existing myminio/follow-images;
+      mc version enable myminio/follow-images;
+      echo 'Bucket follow-images ready';
+      "
+
+  # ── Application Services ───────────────────────────────────────────
+
+  follow-api:
+    build:
+      context: ./follow-api
+      dockerfile: Dockerfile
+    container_name: follow-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - DATABASE_URL=postgres://follow:follow@postgres:5432/follow?sslmode=disable
+      - VALKEY_ADDRESS=valkey:6379
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY_ID=minioadmin
+      - MINIO_SECRET_ACCESS_KEY=minioadmin
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET_NAME=follow-images
+    ports:
+      - "8080:8080"
+    networks:
+      - internal
+
+  follow-image-gateway:
+    build:
+      context: ./follow-image-gateway
+      dockerfile: Dockerfile
+    container_name: follow-image-gateway
+    restart: unless-stopped
+    depends_on:
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
+    environment:
+      - GATEWAY_SERVER_HOST=0.0.0.0
+      - GATEWAY_SERVER_PORT=8090
+      - VALKEY_ADDRESS=valkey:6379
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY_ID=minioadmin
+      - MINIO_SECRET_ACCESS_KEY=minioadmin
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET_NAME=follow-images
+    ports:
+      - "8090:8090"
+    networks:
+      - internal
+
+# ── Volumes ────────────────────────────────────────────────────────
+
+volumes:
+  postgres_data:
+    driver: local
+  valkey_data:
+    driver: local
+  minio_data:
+    driver: local
+
+# ── Networks ───────────────────────────────────────────────────────
+
+networks:
+  internal:
+    driver: bridge
+    name: follow-internal
