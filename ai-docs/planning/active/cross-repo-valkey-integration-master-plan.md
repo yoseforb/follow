@@ -3,7 +3,6 @@
 **Date:** 2026-02-15
 **Status:** Active
 **Scope:** Wire Valkey messaging across follow-pkg, follow-api, and follow-image-gateway
-**Supersedes:** `phase-5-6-shared-module-valkey-plan.md` (stale -- retained for reference)
 
 ---
 
@@ -764,8 +763,7 @@ Phase C is complete when:
 ### Phase D: Infrastructure and Cleanup
 
 1. **Update parent `docker-compose.yml`**: Add Valkey 8.1 service (shared by both services)
-2. **Mark stale plan as superseded**: Add header to `phase-5-6-shared-module-valkey-plan.md` pointing to this plan and the three repo-specific plans
-3. **Update coordination repo CLAUDE.md** if needed (Valkey in service communication map)
+2. **Update coordination repo CLAUDE.md** if needed (Valkey in service communication map)
 
 ---
 
@@ -853,4 +851,3 @@ Both `follow-api` and `follow-image-gateway` services add `depends_on: valkey: {
 - ADR-022 (Domain-agnostic): `ai-docs/adr/follow-api-022-domain-agnostic-processing.md`
 - valkey-go Research: `follow-pkg/ai-docs/research/valkey-go-api-research.md`
 - Valkey Guide: `follow-pkg/ai-docs/research/valkey-comprehensive-guide.md`
-- Stale Plan (superseded): `ai-docs/planning/active/phase-5-6-shared-module-valkey-plan.md`
