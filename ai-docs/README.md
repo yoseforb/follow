@@ -44,7 +44,7 @@ Cross-repo Architecture Decision Records:
 - **follow-api-022-domain-agnostic-processing.md** — Gateway processing model agreed with api
 
 ### Planning (`planning/`)
-- **active/phase-5-6-shared-module-valkey-plan.md** — Shared module bootstrap + Valkey messaging (spans follow-pkg, gateway, api)
+- **active/cross-repo-valkey-integration-master-plan.md** — Shared module bootstrap + Valkey messaging (spans follow-pkg, gateway, api)
 - **completed/image-gateway-architecture-plan.md** — Original gateway architecture plan (phases 1-4 done)
 
 ## Cross-References
