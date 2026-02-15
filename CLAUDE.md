@@ -31,47 +31,51 @@ The platform consists of 5 repositories that together form the complete system:
 
 **Co-location pattern**: Each sub-repo is an independent git repository. The `.gitignore` in this coordination repo excludes all sub-repos so they don't appear as untracked files. Cross-repo documentation lives in `ai-docs/` here; repo-internal documentation stays within each repo.
 
-**Full-stack development**: `docker-compose.yml` in this repo orchestrates all services (PostgreSQL, Valkey, MinIO, follow-api, follow-image-gateway) for integrated local development. Per-repo compose files still work for isolated single-service development.
+**Full-stack development**: `docker-compose.yml` in this repo orchestrates the active services (PostgreSQL, MinIO, follow-api) for integrated local development. Valkey and follow-image-gateway will be added once gateway integration is complete. Per-repo compose files still work for isolated single-service development.
 
 ## Cross-Repo Architecture
 
-### Data Flow: Route Creation
+### Current Architecture (Pre-Gateway)
+
+Currently, follow-api is the **only backend service**. Image uploads go directly to MinIO via presigned URLs -- there is no image gateway, no Valkey messaging, and no image processing pipeline. Everything is synchronous.
+
+#### Data Flow: Route Creation (Current)
 
 ```
 follow-app (Flutter)
   |
-  | POST /api/v1/routes/prepare
+  | POST /api/v1/users/anonymous → JWT token
+  |
+  | POST /api/v1/routes/prepare → route_id
+  |
+  | POST /api/v1/routes/{route_id}/create-waypoints
+  |   (route metadata + waypoints with image_metadata, markers, descriptions)
   v
 follow-api (Go, port 8080)
   |
-  | Signs Ed25519 JWT upload token (contains image_id, storage_key, content_type, max_size)
-  | Returns presigned upload URL pointing to gateway
+  | Creates route, waypoints, image records (all PENDING)
+  | Generates presigned upload URLs (direct to MinIO)
+  | Returns: waypoint_ids[], presigned_urls[]
   v
 follow-app
   |
-  | PUT /upload?token=JWT (raw binary image data)
-  v
-follow-image-gateway (Go, port 8090)
-  |
-  | Verifies Ed25519 JWT
-  | 4-stage pipeline: Validate -> Analyze (ML face/plate detection) -> Transform (blur, WebP, SHA256) -> Upload
+  | PUT {presigned_url} (raw binary image data → direct to MinIO)
+  |   (repeated for each waypoint image)
   v
 MinIO/S3 (object storage)
   |
-  | Gateway publishes result to Valkey (Redis Streams)
+follow-app
+  |
+  | POST /api/v1/routes/{route_id}/confirm-waypoints
   v
 follow-api
   |
-  | Consumes image:result from Valkey, updates PostgreSQL
-  v
-follow-app
-  |
-  | POST /api/v1/routes/{route_id}/confirm-waypoints (PENDING -> ACTIVE)
+  | Validates uploads, transitions route PENDING → ACTIVE
   v
 Route is live and navigable
 ```
 
-### Data Flow: Route Navigation
+#### Data Flow: Route Navigation (Current)
 
 ```
 follow-app
@@ -80,49 +84,85 @@ follow-app
   v
 follow-api
   |
-  | Returns route with waypoints and presigned image URLs (from MinIO)
+  | Returns route with waypoints and presigned download URLs (from MinIO)
   v
 follow-app
   |
   | Downloads images via presigned URLs, caches locally
-  | User follows waypoints sequentially: image -> marker -> walk -> next image
+  | User follows waypoints sequentially: image → marker → walk → next image
   v
 Offline navigation (no further server contact needed)
 ```
 
-### Service Communication Map
+#### Data Flow: Image Replacement (Current)
+
+```
+follow-app
+  |
+  | POST /api/v1/routes/{route_id}/waypoints/{waypoint_id}/replace-image/prepare
+  |   (file_name, file_size_bytes, content_type → validated: 1KB-10MB, image/*)
+  v
+follow-api → returns image_id + presigned upload_url
+  |
+follow-app
+  |
+  | PUT {presigned_url} (raw binary → direct to MinIO)
+  |
+  | POST /api/v1/routes/{route_id}/waypoints/{waypoint_id}/replace-image/confirm
+  |   (image_id, file_hash, marker coordinates)
+  v
+follow-api → swaps old image for new, updates marker coordinates
+```
+
+#### Current Service Communication Map
 
 | From | To | Protocol | Purpose |
 |------|----|----------|---------|
 | follow-app | follow-api | REST HTTP (port 8080) | All route/user API operations |
-| follow-app | follow-image-gateway | HTTP PUT (port 8090) | Raw image upload with JWT |
-| follow-api | follow-image-gateway | Ed25519 JWT | API signs tokens, gateway verifies them |
-| follow-image-gateway | MinIO | S3 API (PutObject) | Processed image storage |
-| follow-api | MinIO | S3 API (StatObject, PresignedGet) | Image verification and URL generation |
-| follow-image-gateway | Valkey | Redis Streams | Publishes image:result after processing |
-| follow-api | Valkey | Redis Streams | Writes image:status:{id} (queued), consumes image:result |
-| follow-api, follow-image-gateway | follow-pkg | Go module import | Shared logger utility |
+| follow-app | MinIO | HTTP PUT (presigned URL) | Direct image upload (no gateway) |
+| follow-app | MinIO | HTTP GET (presigned URL) | Direct image download for navigation |
+| follow-api | MinIO | S3 API (PresignedPut, PresignedGet) | Generate signed URLs for client |
+| follow-api | PostgreSQL | SQL | Route, User, Image entity persistence |
+| follow-api, follow-pkg | Go module import | - | Shared logger utility |
+
+### Future Architecture (With Image Gateway + Valkey)
+
+The follow-image-gateway and Valkey integration is **planned but not yet wired**. The gateway repo has its pipeline implemented (Phases 1-4), but inter-service communication (Phase 5) is not yet connected. When complete, the architecture will change to:
+
+- **Upload path**: Client → follow-image-gateway (via Ed25519 JWT) → processes image → MinIO + Valkey result
+- **Status path**: Client ← SSE from follow-api ← Valkey status updates from gateway
+- **Key additions**: Ed25519 asymmetric JWT signing, Valkey Redis Streams messaging, ML face/plate detection, image processing pipeline, real-time SSE status streaming
+
+See `ai-docs/architecture/image-gateway-architecture.md` for the full future architecture design.
 
 ## Tech Stack Summary
 
 ### Backend (Go Services)
 
+**Currently active (follow-api + follow-pkg):**
+
 | Technology | Used In | Purpose |
 |------------|---------|---------|
-| Go (Golang) | follow-api, follow-image-gateway, follow-pkg | Server language |
-| Goa-Design | follow-api, follow-image-gateway | HTTP API framework / DSL |
+| Go (Golang) | follow-api, follow-pkg | Server language |
+| Goa-Design | follow-api | HTTP API framework / DSL |
 | PostgreSQL | follow-api | Primary database (domain-separated schemas) |
-| MinIO/S3 | follow-api (read), follow-image-gateway (write) | Object storage for images |
-| Valkey (Redis-compatible) | follow-api, follow-image-gateway | Messaging via Redis Streams |
+| MinIO/S3 | follow-api (presigned URLs) | Object storage for images |
 | Watermill | follow-api | In-memory event bus (GoChannel) |
-| zerolog | follow-api, follow-image-gateway, follow-pkg | Structured logging |
-| Viper | follow-api, follow-image-gateway | Configuration management |
+| zerolog | follow-api, follow-pkg | Structured logging |
+| Viper | follow-api | Configuration management |
+| golang-jwt/jwt/v5 | follow-api | JWT authentication (symmetric) |
+| gofumpt, golines | All Go repos | Code formatting |
+| golangci-lint + NilAway | All Go repos | Linting with nil panic detection |
+
+**Planned (follow-image-gateway integration -- not yet wired):**
+
+| Technology | Used In | Purpose |
+|------------|---------|---------|
+| Goa-Design | follow-image-gateway | HTTP API framework / DSL |
+| Valkey (Redis-compatible) | follow-api, follow-image-gateway | Messaging via Redis Streams |
 | vipsgen | follow-image-gateway | Image processing (4-8x faster than stdlib) |
 | onnxruntime_go | follow-image-gateway | ML inference (face/plate detection) |
 | Ed25519 JWT | follow-api (sign), follow-image-gateway (verify) | Upload token authentication |
-| golang-jwt/jwt/v5 | follow-api, follow-image-gateway | JWT handling |
-| gofumpt, golines | All Go repos | Code formatting |
-| golangci-lint + NilAway | All Go repos | Linting with nil panic detection |
 
 ### Frontend (Flutter)
 
@@ -138,12 +178,12 @@ Offline navigation (no further server contact needed)
 
 ### Infrastructure
 
-| Technology | Purpose |
-|------------|---------|
-| Docker / Docker Compose | Local development orchestration |
-| MinIO | S3-compatible object storage (local dev) |
-| Valkey | Redis-compatible messaging (BSD-3-Clause) |
-| PostgreSQL | Relational database |
+| Technology | Purpose | Status |
+|------------|---------|--------|
+| Docker / Docker Compose | Local development orchestration | Active |
+| PostgreSQL | Relational database | Active |
+| MinIO | S3-compatible object storage (local dev) | Active |
+| Valkey | Redis-compatible messaging (BSD-3-Clause) | Planned (gateway integration) |
 
 ## Architecture Patterns by Repo
 
@@ -258,18 +298,22 @@ go mod tidy
 4. **follow-app**: Update ViewModel if the data model changed
 5. **follow-app**: Run quality gates (`dart analyze`, `flutter test`)
 
-### When Changing Image Processing
+### When Changing Image Handling
 
-1. **follow-image-gateway**: Modify pipeline stage(s)
-2. **follow-image-gateway**: Run quality gates and integration tests
-3. **follow-api**: Update if the Valkey message contract changed (image:result format)
-4. **follow-app**: Update if presigned URL handling or image format changed
+Currently, image upload/download uses presigned URLs directly between the client and MinIO. There is no image processing pipeline in the flow yet.
+
+1. **follow-api**: Modify presigned URL generation, image entity lifecycle, or validation logic
+2. **follow-api**: Run quality gates and integration tests
+3. **follow-app**: Update if presigned URL handling, upload flow, or image format changed
+
+**Future (after gateway integration):** Changes to image processing will involve follow-image-gateway pipeline stages, Valkey message contracts (image:result format), and Ed25519 JWT token changes across both Go services.
 
 ### When Changing Authentication / JWT
 
-1. **follow-api**: Modify JWT signing logic
-2. **follow-image-gateway**: Ensure JWT verification still matches (Ed25519 key pair, claims structure)
-3. **follow-app**: Update token handling if auth flow changed
+1. **follow-api**: Modify JWT signing/verification logic (currently symmetric JWT)
+2. **follow-app**: Update token handling if auth flow changed
+
+**Future (after gateway integration):** JWT changes will also require updating follow-image-gateway's Ed25519 public key verification to match follow-api's signing.
 
 ### When Adding Shared Go Code
 
@@ -291,8 +335,8 @@ go mod tidy
 
 | Repo | Status | Current Focus |
 |------|--------|---------------|
-| follow-api | Foundation implemented, active development | Route and User domain MVP (6-phase plan) |
-| follow-image-gateway | Phases 1-4 done (foundation through 4-stage pipeline) | Phase 5: Valkey Streams messaging |
+| follow-api | **MVP functional** -- full route lifecycle, user auth, image upload/download via presigned URLs | Route and User domain MVP (6-phase plan) |
+| follow-image-gateway | Pipeline built (Phases 1-4), **not yet wired to follow-api** | Phase 5: Valkey Streams messaging + inter-service integration |
 | follow-app | Planning complete, implementation starting | MVVM foundation with Provider (5-phase plan) |
 | follow-pkg | Active | Shared logger package |
 | follow-business | MVP complete, market research phase | Finding pilot customer/partner |
@@ -363,10 +407,12 @@ For most cross-repo changes, follow this order:
 
 - [ ] Identify all repos affected by the change
 - [ ] Verify API contract compatibility between follow-api and follow-app
-- [ ] Verify JWT/auth contract compatibility between follow-api and follow-image-gateway
-- [ ] Verify Valkey message format compatibility between follow-api and follow-image-gateway
 - [ ] Run quality gates in every affected repo
 - [ ] Test end-to-end flow if the change touches the data path
+
+**Additional checks after gateway integration:**
+- [ ] Verify JWT/auth contract compatibility between follow-api and follow-image-gateway
+- [ ] Verify Valkey message format compatibility between follow-api and follow-image-gateway
 
 ### Quality Gate Summary (All Repos)
 
