@@ -6,6 +6,23 @@
 
 ---
 
+## Completed Prerequisites
+
+**Relative Marker Coordinates Migration** - COMPLETED 2026-02-16
+
+The marker coordinates migration from absolute pixels to normalized floats (0.0-1.0) has been completed. This is a prerequisite for Valkey integration because:
+- Markers are now scale-invariant (no need to recalculate them when image gateway resizes images)
+- API database schema uses DOUBLE PRECISION for marker_x and marker_y columns
+- All APIs accept/return normalized float64 coordinates
+- Flutter app uses double values directly
+
+**Impact on This Plan:**
+- No need for marker auto-scaling logic in ProcessImageResultUseCase
+- Waypoint status transitions remain unchanged (markers are stored as-is)
+- Image dimension processing in gateway pipeline does NOT affect stored marker coordinates
+
+---
+
 ## Mission
 
 Wire Valkey (Redis-compatible) messaging across the Follow platform to enable asynchronous inter-service communication between follow-api and follow-image-gateway. This connects the pieces that are already built (gateway pipeline, API domains) through a shared Valkey wrapper.
@@ -70,7 +87,7 @@ Consumes the follow-pkg wrapper to:
 - Initialize ValkeyClient in App lifecycle
 - Run background consumer goroutine on `image:result` stream
 - Implement `ProcessImageResultUseCase` (DB transaction: update Image + Waypoint + Route)
-- Auto-scale marker coordinates based on image resize dimensions
+- Confirm waypoint status when image processing succeeds (marker coordinates are scale-invariant -- no rescaling needed)
 - Auto-transition routes PENDING -> READY when all images processed
 - Add SSE endpoint (`GET /images/status/stream`) for real-time progress
 - Add polling endpoint (`GET /images/{id}/status`) as fallback
@@ -370,9 +387,9 @@ Validates the complete end-to-end flow from route creation to route ready state.
 func TestFullUploadProcessResultFlow(t *testing.T) {
     // 1. API: Create route with 3 waypoints
     response := createRouteWithWaypoints(t, apiURL, []WaypointInput{
-        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 100, MarkerY: 200},
-        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 150, MarkerY: 250},
-        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 200, MarkerY: 300},
+        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 0.10, MarkerY: 0.20},
+        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 0.15, MarkerY: 0.25},
+        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 0.20, MarkerY: 0.30},
     })
     assert.Len(t, response.UploadURLs, 3)
 
@@ -409,12 +426,13 @@ func TestFullUploadProcessResultFlow(t *testing.T) {
         assert.Greater(t, image.ProcessedWidth, 0)
     }
 
-    // 8. Verify Waypoint markers auto-scaled
+    // 8. Verify Waypoint markers unchanged (scale-invariant)
     for i, waypointID := range response.WaypointIDs {
         waypoint := queryWaypointFromDB(t, waypointID)
         assert.Equal(t, "CONFIRMED", waypoint.Status)
-        // Marker coordinates should be scaled (exact values depend on resize)
-        assert.NotEqual(t, response.Waypoints[i].MarkerX, waypoint.MarkerX)
+        // Marker coordinates remain unchanged (normalized, scale-invariant)
+        assert.Equal(t, response.Waypoints[i].MarkerX, waypoint.MarkerX)
+        assert.Equal(t, response.Waypoints[i].MarkerY, waypoint.MarkerY)
     }
 }
 ```
@@ -427,7 +445,7 @@ Validates that the Valkey SET NX upload guard prevents duplicate image uploads.
 func TestUploadGuardPreventsDuplicates(t *testing.T) {
     // 1. Create route with 1 waypoint
     response := createRouteWithWaypoints(t, apiURL, []WaypointInput{
-        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 100, MarkerY: 200},
+        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 0.10, MarkerY: 0.20},
     })
     uploadURL := response.UploadURLs[0]
 
@@ -454,7 +472,7 @@ Validates that the image:status:{id} hash updates correctly through pipeline sta
 ```go
 func TestProgressTrackingViaValkeyHash(t *testing.T) {
     response := createRouteWithWaypoints(t, apiURL, []WaypointInput{
-        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 100, MarkerY: 200},
+        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 0.10, MarkerY: 0.20},
     })
     imageID := response.UploadURLs[0].ImageID
 
@@ -500,7 +518,7 @@ Validates that upload failures are correctly communicated back to follow-api.
 ```go
 func TestFailurePropagationInvalidImage(t *testing.T) {
     response := createRouteWithWaypoints(t, apiURL, []WaypointInput{
-        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 100, MarkerY: 200},
+        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 0.10, MarkerY: 0.20},
     })
     imageID := response.UploadURLs[0].ImageID
 
@@ -536,7 +554,7 @@ Validates real-time Server-Sent Events from follow-api during image processing.
 ```go
 func TestSSEEventStreaming(t *testing.T) {
     response := createRouteWithWaypoints(t, apiURL, []WaypointInput{
-        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 100, MarkerY: 200},
+        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 0.10, MarkerY: 0.20},
     })
     imageID := response.UploadURLs[0].ImageID
 
@@ -571,9 +589,8 @@ func TestSSEEventStreaming(t *testing.T) {
         case event := <-events:
             seenEvents[event.Type] = true
             if event.Type == "image_processed" {
-                // Verify event data includes preview URL and updated marker
+                // Verify event data includes preview URL (markers unchanged)
                 assert.Contains(t, event.Data, "preview_url")
-                assert.Contains(t, event.Data, "updated_marker")
                 return
             }
         }
@@ -592,7 +609,7 @@ Validates that pending messages are correctly re-processed after consumer restar
 ```go
 func TestRecoveryAfterRestart(t *testing.T) {
     response := createRouteWithWaypoints(t, apiURL, []WaypointInput{
-        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 100, MarkerY: 200},
+        {ContentType: "image/jpeg", FileSize: 2048, MarkerX: 0.10, MarkerY: 0.20},
     })
     imageID := response.UploadURLs[0].ImageID
 
@@ -828,7 +845,7 @@ Both `follow-api` and `follow-image-gateway` services add `depends_on: valkey: {
 - [ ] API writes initial `{stage: "queued"}` to `image:status:{id}` on route creation
 - [ ] API consumes results from `image:result` via XREADGROUP
 - [ ] API updates Image, Waypoint, and Route in single DB transaction
-- [ ] API auto-scales marker coordinates based on dimension ratios
+- [ ] API confirms waypoint status when image processing succeeds (marker coordinates are scale-invariant)
 - [ ] API auto-transitions routes PENDING -> READY when all images processed
 - [ ] SSE endpoint streams progress events to connected clients
 - [ ] Polling endpoint returns current status from PostgreSQL
