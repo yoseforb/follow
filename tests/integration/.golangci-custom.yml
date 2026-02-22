@@ -36,7 +36,7 @@ formatters:
       # with the given prefixes are grouped after 3rd-party packages.
       # Default: []
       local-prefixes:
-        - follow-api 
+        - follow-integration-tests
 
     golines:
       # Target maximum line length.
@@ -167,7 +167,7 @@ linters:
         type: module
         description: Static analysis tool to detect potential nil panics in Go code.
         settings:
-          include-pkgs: "follow-api"
+          include-pkgs: "follow-integration-tests"
 
     cyclop:
       # The maximal code complexity to report.
@@ -245,54 +245,17 @@ linters:
         - map
 
     exhaustruct:
-      # List of regular expressions to match type names that should be excluded from processing.
-      # Anonymous structs can be matched by '<anonymous>' alias.
-      # Has precedence over `include`.
-      # Each regular expression must match the full type name, including package path.
-      # For example, to match type `net/http.Cookie` regular expression should be `.*/http\.Cookie`,
-      # but not `http\.Cookie`.
       # Default: []
       exclude:
         # std libs
         - ^net/http.Client$
-        - ^net/http.Cookie$
-        - ^net/http.Request$
         - ^net/http.Response$
-        - ^net/http.Server$
-        - ^net/http.Transport$
         - ^net/url.URL$
         - ^os/exec.Cmd$
-        - ^reflect.StructField$
-        # public libs
-        - ^github.com/Shopify/sarama.Config$
-        - ^github.com/Shopify/sarama.ProducerMessage$
-        - ^github.com/mitchellh/mapstructure.DecoderConfig$
-        - ^github.com/prometheus/client_golang/.+Opts$
-        - ^github.com/spf13/cobra.Command$
-        - ^github.com/spf13/cobra.CompletionOptions$
-        - ^github.com/stretchr/testify/mock.Mock$
+        # public libs used by integration tests
         - ^github.com/testcontainers/testcontainers-go.+Request$
         - ^github.com/testcontainers/testcontainers-go.FromDockerfile$
-        - ^golang.org/x/tools/go/analysis.Analyzer$
-        - ^google.golang.org/protobuf/.+Options$
-        - ^gopkg.in/yaml.v3.Node$
-        # Project-specific exclusions for complex structs with many optional fields
-        - ^follow-api/internal/shared/interfaces.BaseCommand$
-        - ^follow-api/internal/shared/interfaces.BaseQuery$
-        - ^follow-api/internal/shared/interfaces.DomainEvent$
-        - ^follow-api/internal/shared/config.Config$
-        - ^follow-api/internal/shared/config.PostgreSQLConfig$
-        - ^follow-api/internal/shared/config.BaseTimeoutConfig$
-        - ^follow-api/internal/infrastructure/eventbus.DeadLetterEvent$
-        - ^follow-api/internal/infrastructure/eventbus.DeadLetterQueueStats$
-        - ^follow-api/internal/infrastructure/eventbus.CircuitBreaker$
-        # Domain module command/query/result structs with many optional fields
-        - ^follow-api/internal/domains/.+/module\..+Command$
-        - ^follow-api/internal/domains/.+/module\..+Query$
-        - ^follow-api/internal/domains/.+/module\..+Result$
-        # Usecase input/output structs with optional fields
-        - ^follow-api/internal/domains/.+/usecases\..+Input$
-        - ^follow-api/internal/domains/.+/usecases\..+Output$
+        - ^github.com/valkey-io/valkey-go.ClientOption$
         # Anonymous test structs
         - <anonymous>$
       # Allows empty structures in return statements.
@@ -378,8 +341,6 @@ linters:
         - os.WriteFile
         - prometheus.ExponentialBuckets.*
         - prometheus.LinearBuckets
-        - Example   # Goa DSL example values for API documentation
-        - Field     # Goa DSL protobuf field ordinals
       # List of numbers to exclude from analysis.
       # Default: []
       ignored-numbers:
@@ -486,101 +447,19 @@ linters:
       - common-false-positives
     # Excluding configuration per-path, per-linter, per-text and per-source.
     rules:
-      - source: 'TODO'
-        linters: [ godot ]
-      - text: 'should have a package comment'
-        linters: [ revive ]
-      - text: 'exported \S+ \S+ should have comment( \(or a comment on this block\))? or be unexported'
-        linters: [ revive ]
-      # Removed: - text: 'package comment should be of the form ".+"' (revive) - unused exclusion rule
-      # Removed: - text: 'comment on exported \S+ \S+ should be of the form ".+"' (revive, staticcheck) - unused exclusion rule
+      # Integration test files: relax strict linters that conflict with TestMain patterns
       - path: '_test\.go'
         linters:
           - bodyclose
           - dupl
           - errcheck
+          - exhaustruct
           - funlen
           - goconst
           - gosec
           - noctx
           - testpackage
           - wrapcheck
-      # Goa design files use global variables for API design patterns
-      - path: 'design/'
-        linters:
-          - gochecknoglobals # Goa framework requires global variables for API design
-      # Domain value objects use immutable lookup maps for validation
-      - path: 'internal/domains/.*/domain/valueobjects/'
-        linters:
-          - gochecknoglobals # Immutable validation lookup maps are acceptable
-          - dupl # Value objects follow DDD pattern - structural similarity is intentional
-      # Repository implementations share COUNT/SELECT boilerplate across tables
-      - path: 'internal/domains/.*/repository/postgres/'
-        linters:
-          - dupl # Postgres repos share query structure; WHERE clause differs per method
-      # Singleton patterns and global configuration are acceptable in specific contexts
-      - text: '(globalMetrics|once|globalConfig) is a global variable'
-        linters:
-          - gochecknoglobals # Legitimate singleton patterns and global config
-      # Test utilities can use global helper structures
-      - path: 'internal/testutil/'
-        linters:
-          - gochecknoglobals # Test helper globals are acceptable
-      # CLI output and early initialization can use fmt.Print before logging is setup
-      - text: 'use of `fmt\.Print.*` forbidden by pattern'
-        path: 'cmd/server/'
-        linters:
-          - forbidigo # CLI version output and pre-logging setup messages are acceptable
-      - text: 'use of `fmt\.Print.*` forbidden by pattern'
-        path: 'internal/shared/config/config\.go'
-        linters:
-          - forbidigo # Early config loading warnings before logging initialization
-      # Disable exhaustruct for test files and complex config/command/event structs
-      - path: '_test\.go'
-        linters:
-          - exhaustruct  # Test structs often have many optional fields
-      # Removed: - path: 'internal/shared/config/' (exhaustruct) - unused exclusion rule
-      - path: 'internal/infrastructure/eventbus/'
-        linters:
-          - exhaustruct  # Complex event structs with optional fields
-      # Removed: - path: 'internal/domains/.*/module/' (exhaustruct) - unused exclusion rule
-      # Removed: - path: 'internal/domains/.*/factory/' (exhaustruct) - unused exclusion rule
-      - path: 'internal/api/services/'
-        linters:
-          - exhaustruct  # API service structs have complex optional response fields
-      - path: 'internal/infrastructure/'
-        linters:
-          - exhaustruct  # Infrastructure structs have many internal optional fields
-      - path: 'internal/shared/'
-        linters:
-          - exhaustruct  # Shared interface structs have many optional fields
-      - path: 'internal/testutil/'
-        linters:
-          - exhaustruct  # Test utility structs have optional configuration fields
-      # Disable overly strict style linters for complex functions that are working correctly
-      - path: 'internal/infrastructure/database/retry\.go'
-        linters:
-          - funlen       # Error classification function requires many cases
-          - gocognit     # Retry logic complexity is necessary for robustness
-      - path: 'cmd/server/'
-        linters:
-          - funlen       # Server initialization and CLI flag parsing complexity is acceptable
-          - gocognit     # Server startup and flag handling complexity is necessary
-      # Disable documentation linters for well-documented internal interfaces
-      # Removed: - text: 'exported \S+ \S+ should have comment.*interfaces\.go' (revive) - unused exclusion rule
-      # Allow interface returns for dependency injection and architecture patterns
-      # Removed: - path: 'internal/domains/.*/factory/' (ireturn) - unused exclusion rule
-      # Removed: - path: 'internal/shared/interfaces/' (ireturn) - unused exclusion rule
-      # Allow "interfaces" package name for interface definition files
-      - text: 'var-naming: avoid meaningless package names'
-        path: '.*/interfaces/'
-        linters:
-          - revive       # "interfaces" is meaningful for interface definition files
-      # Integration tests use globals for TestMain setup/teardown and inline error handling for setup code
-      - path: 'tests/integration/'
-        linters:
-          - gochecknoglobals  # TestMain pattern requires package-level state for setup/teardown
-          - noinlineerr       # Setup/teardown code uses inline error handling for brevity
       # Allow local replace directives for development with follow-pkg monorepo
       - text: 'local replacement are not allowed'
         linters:
