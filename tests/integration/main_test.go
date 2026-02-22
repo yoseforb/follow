@@ -85,7 +85,7 @@ func setupLocal() {
 		Str("dir", gatewayDir).
 		Str("port", gatewayPort).
 		Msg("starting follow-image-gateway")
-	gatewayProcess = exec.Command( //nolint:gosec
+	gatewayProcess = exec.Command(
 		"go", "run", "./cmd/server",
 		"-host", "localhost",
 		"-port", gatewayPort,
@@ -104,7 +104,7 @@ func setupLocal() {
 		Str("dir", apiDir).
 		Str("port", apiPort).
 		Msg("starting follow-api")
-	apiProcess = exec.Command( //nolint:gosec
+	apiProcess = exec.Command(
 		"go", "run", "./cmd/server",
 		"-host", "localhost",
 		"-port", apiPort,
@@ -240,7 +240,7 @@ func killProcess(name string, cmd *exec.Cmd) {
 func waitForService(serviceURL string) {
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(serviceURL) //nolint:noctx
+		resp, err := http.Get(serviceURL)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			_ = resp.Body.Close()
 			log.Info().Str("url", serviceURL).Msg("service ready")
