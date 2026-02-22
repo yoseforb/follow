@@ -288,6 +288,16 @@ go test -race -cover ./...
 go mod tidy
 ```
 
+### tests/integration (cross-repo integration tests)
+```bash
+cd tests/integration/
+
+# Quality gates (mandatory after every change)
+gofumpt -w . && golines -w --max-len=80 .
+./custom-gcl run --build-tags integration -c .golangci-custom.yml ./...
+go mod tidy
+```
+
 ## Cross-Repo Development Workflows
 
 ### When Changing an API Endpoint
@@ -424,6 +434,7 @@ Every repo enforces **zero tolerance** -- all quality gates must pass before com
 | follow-image-gateway | `gofumpt -w . && golines -w --max-len=80 .` | `go vet ./... && ./custom-gcl run -c .golangci-custom.yml ./... --fix` | `go test -race -cover ./...` | `go run ./cmd/server -runtime-timeout 10s` |
 | follow-app | `dart format .` | `dart analyze` (must show "No errors") | `flutter test --coverage` | `flutter build apk --debug` |
 | follow-pkg | `gofumpt -w . && golines -w --max-len=80 .` | `go vet ./... && ./custom-gcl run -c .golangci-custom.yml ./... --fix` | `go test -race -cover ./...` | - |
+| tests/integration | `gofumpt -w . && golines -w --max-len=80 .` | `./custom-gcl run --build-tags integration -c .golangci-custom.yml ./...` | - | - |
 
 ### Commit Message Convention (All Repos)
 
