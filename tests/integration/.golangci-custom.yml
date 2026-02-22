@@ -576,6 +576,11 @@ linters:
         path: '.*/interfaces/'
         linters:
           - revive       # "interfaces" is meaningful for interface definition files
+      # Integration tests use globals for TestMain setup/teardown and inline error handling for setup code
+      - path: 'tests/integration/'
+        linters:
+          - gochecknoglobals  # TestMain pattern requires package-level state for setup/teardown
+          - noinlineerr       # Setup/teardown code uses inline error handling for brevity
       # Allow local replace directives for development with follow-pkg monorepo
       - text: 'local replacement are not allowed'
         linters:
