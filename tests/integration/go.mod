@@ -6,7 +6,10 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.37.0
 	github.com/valkey-io/valkey-go v1.0.71
+	github.com/yoseforb/follow-pkg v0.0.0
 )
+
+replace github.com/yoseforb/follow-pkg => ../../follow-pkg
 
 require (
 	dario.cat/mergo v1.0.1 // indirect

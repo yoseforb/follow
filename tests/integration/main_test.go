@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,8 +13,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	valkeygo "github.com/valkey-io/valkey-go"
+	"github.com/yoseforb/follow-pkg/logger"
 )
 
 var (
@@ -27,7 +28,20 @@ var (
 	gatewayProcess *exec.Cmd
 )
 
+func initLogger() {
+	_ = logger.InitGlobalLogger(
+		"follow-integration-tests",
+		&logger.LoggingConfig{
+			Level:  "debug",
+			Format: "console",
+			Colors: true,
+		},
+	)
+}
+
 func TestMain(m *testing.M) {
+	initLogger()
+
 	mode := envOrDefault("INTEGRATION_TEST_MODE", "local")
 
 	switch mode {
@@ -59,10 +73,7 @@ func setupLocal() {
 
 	projectRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
-		slog.Error(
-			"failed to determine project root",
-			"error", err,
-		)
+		log.Error().Err(err).Msg("failed to determine project root")
 		os.Exit(1)
 	}
 	apiDir := filepath.Join(projectRoot, "follow-api")
@@ -70,11 +81,10 @@ func setupLocal() {
 
 	waitForValkey(valkeyAddress)
 
-	slog.Info(
-		"starting follow-image-gateway",
-		"dir", gatewayDir,
-		"port", gatewayPort,
-	)
+	log.Info().
+		Str("dir", gatewayDir).
+		Str("port", gatewayPort).
+		Msg("starting follow-image-gateway")
 	gatewayProcess = exec.Command( //nolint:gosec
 		"go", "run", "./cmd/server",
 		"-host", "localhost",
@@ -86,18 +96,14 @@ func setupLocal() {
 	gatewayProcess.Stdout = os.Stdout
 	gatewayProcess.Stderr = os.Stderr
 	if err := gatewayProcess.Start(); err != nil {
-		slog.Error(
-			"failed to start follow-image-gateway",
-			"error", err,
-		)
+		log.Error().Err(err).Msg("failed to start follow-image-gateway")
 		os.Exit(1)
 	}
 
-	slog.Info(
-		"starting follow-api",
-		"dir", apiDir,
-		"port", apiPort,
-	)
+	log.Info().
+		Str("dir", apiDir).
+		Str("port", apiPort).
+		Msg("starting follow-api")
 	apiProcess = exec.Command( //nolint:gosec
 		"go", "run", "./cmd/server",
 		"-host", "localhost",
@@ -113,10 +119,7 @@ func setupLocal() {
 	apiProcess.Stdout = os.Stdout
 	apiProcess.Stderr = os.Stderr
 	if err := apiProcess.Start(); err != nil {
-		slog.Error(
-			"failed to start follow-api",
-			"error", err,
-		)
+		log.Error().Err(err).Msg("failed to start follow-api")
 		_ = gatewayProcess.Process.Kill()
 		os.Exit(1)
 	}
@@ -124,21 +127,17 @@ func setupLocal() {
 	waitForService(gatewayURL + "/health/")
 	waitForService(apiURL + "/health/")
 
-	slog.Info(
-		"local mode setup complete",
-		"api_url", apiURL,
-		"gateway_url", gatewayURL,
-		"valkey", valkeyAddress,
-	)
+	log.Info().
+		Str("api_url", apiURL).
+		Str("gateway_url", gatewayURL).
+		Str("valkey", valkeyAddress).
+		Msg("local mode setup complete")
 }
 
 func setupDocker() {
 	projectRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
-		slog.Error(
-			"failed to determine project root",
-			"error", err,
-		)
+		log.Error().Err(err).Msg("failed to determine project root")
 		os.Exit(1)
 	}
 
@@ -161,31 +160,21 @@ func setupDocker() {
 
 	for k, v := range envOverrides {
 		if err := os.Setenv(k, v); err != nil {
-			slog.Error(
-				"failed to set env override",
-				"key", k,
-				"error", err,
-			)
+			log.Error().Str("key", k).Err(err).Msg("failed to set env override")
 			os.Exit(1)
 		}
 	}
 
 	stack, err := compose.NewDockerCompose(composePath)
 	if err != nil {
-		slog.Error(
-			"failed to create compose stack",
-			"error", err,
-		)
+		log.Error().Err(err).Msg("failed to create compose stack")
 		os.Exit(1)
 	}
 	composeStack = stack
 
 	ctx := context.Background()
 	if err := composeStack.Up(ctx, compose.Wait(true)); err != nil {
-		slog.Error(
-			"failed to start compose stack",
-			"error", err,
-		)
+		log.Error().Err(err).Msg("failed to start compose stack")
 		os.Exit(1)
 	}
 
@@ -193,12 +182,11 @@ func setupDocker() {
 	apiURL = "http://localhost:18080"
 	gatewayURL = "http://localhost:18090"
 
-	slog.Info(
-		"docker mode setup complete",
-		"api_url", apiURL,
-		"gateway_url", gatewayURL,
-		"valkey", valkeyAddress,
-	)
+	log.Info().
+		Str("api_url", apiURL).
+		Str("gateway_url", gatewayURL).
+		Str("valkey", valkeyAddress).
+		Msg("docker mode setup complete")
 }
 
 func teardownLocal() {
@@ -215,7 +203,7 @@ func teardownDocker() {
 		ctx,
 		compose.RemoveVolumes(true),
 	); err != nil {
-		slog.Error("failed to tear down compose stack", "error", err)
+		log.Error().Err(err).Msg("failed to tear down compose stack")
 	}
 }
 
@@ -223,17 +211,15 @@ func killProcess(name string, cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
-	slog.Info(
-		"stopping service",
-		"name", name,
-		"pid", cmd.Process.Pid,
-	)
+	log.Info().
+		Str("name", name).
+		Int("pid", cmd.Process.Pid).
+		Msg("stopping service")
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		slog.Warn(
-			"SIGTERM failed, sending SIGKILL",
-			"name", name,
-			"error", err,
-		)
+		log.Warn().
+			Str("name", name).
+			Err(err).
+			Msg("SIGTERM failed, sending SIGKILL")
 		_ = cmd.Process.Kill()
 		return
 	}
@@ -241,12 +227,11 @@ func killProcess(name string, cmd *exec.Cmd) {
 	go func() { done <- cmd.Wait() }()
 	select {
 	case <-done:
-		slog.Info("service stopped gracefully", "name", name)
+		log.Info().Str("name", name).Msg("service stopped gracefully")
 	case <-time.After(5 * time.Second):
-		slog.Warn(
-			"service did not stop in 5s, sending SIGKILL",
-			"name", name,
-		)
+		log.Warn().
+			Str("name", name).
+			Msg("service did not stop in 5s, sending SIGKILL")
 		_ = cmd.Process.Kill()
 		<-done
 	}
@@ -258,7 +243,7 @@ func waitForService(serviceURL string) {
 		resp, err := http.Get(serviceURL) //nolint:noctx
 		if err == nil && resp.StatusCode == http.StatusOK {
 			_ = resp.Body.Close()
-			slog.Info("service ready", "url", serviceURL)
+			log.Info().Str("url", serviceURL).Msg("service ready")
 			return
 		}
 		if resp != nil {
@@ -266,7 +251,7 @@ func waitForService(serviceURL string) {
 		}
 		time.Sleep(1 * time.Second)
 	}
-	slog.Error("service not reachable after 60s", "url", serviceURL)
+	log.Error().Str("url", serviceURL).Msg("service not reachable after 60s")
 	os.Exit(1)
 }
 
@@ -285,13 +270,13 @@ func waitForValkey(addr string) {
 			).Error()
 			client.Close()
 			if err == nil {
-				slog.Info("valkey ready", "addr", addr)
+				log.Info().Str("addr", addr).Msg("valkey ready")
 				return
 			}
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	slog.Error("valkey not reachable after 30s", "addr", addr)
+	log.Error().Str("addr", addr).Msg("valkey not reachable after 30s")
 	os.Exit(1)
 }
 
