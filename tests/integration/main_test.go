@@ -137,8 +137,8 @@ func setupLocal() {
 		os.Exit(1)
 	}
 
-	waitForService(gatewayURL + "/health/")
-	waitForService(apiURL + "/health/")
+	waitForService(gatewayURL + "/health")
+	waitForService(apiURL + "/health")
 
 	log.Info().
 		Str("api_url", apiURL).
