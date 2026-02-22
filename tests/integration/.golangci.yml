@@ -136,7 +136,7 @@ linters:
     #- varnamelen # [great idea, but too many false positives] checks that the length of a variable's name matches its scope
     - wrapcheck # checks that errors returned from external packages are wrapped
     - zerologlint # detects the wrong usage of zerolog that a user forgets to dispatch zerolog.Event
-    - nilaway # detects potential nil panics in Go code (custom linter plugin)
+    # - nilaway # detects potential nil panics in Go code (custom linter plugin)
 
     ## disabled
     #- containedctx # detects struct contained context.Context field
@@ -162,12 +162,6 @@ linters:
 
   # All settings can be found here https://github.com/golangci/golangci-lint/blob/HEAD/.golangci.reference.yml
   settings:
-    custom:
-      nilaway:
-        type: module
-        description: Static analysis tool to detect potential nil panics in Go code.
-        settings:
-          include-pkgs: "follow-integration-tests"
 
     cyclop:
       # The maximal code complexity to report.

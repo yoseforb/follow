@@ -19,10 +19,15 @@ import (
 	"github.com/yoseforb/follow-pkg/logger"
 )
 
+// Shared test state — set by setupLocal()/setupDocker(), read by all test files.
 var (
-	apiURL         string
-	gatewayURL     string
-	valkeyAddress  string
+	apiURL        string
+	gatewayURL    string
+	valkeyAddress string
+)
+
+// Lifecycle handles — used only by setup/teardown.
+var (
 	composeStack   compose.ComposeStack
 	apiProcess     *exec.Cmd
 	gatewayProcess *exec.Cmd
@@ -64,9 +69,15 @@ func TestMain(m *testing.M) {
 }
 
 func setupLocal() {
-	valkeyAddress = envOrDefault("VALKEY_ADDRESS", "localhost:6379")
+	valkeyAddress = envOrDefault(
+		"VALKEY_ADDRESS",
+		"localhost:6379",
+	)
 	apiURL = envOrDefault("API_URL", "http://localhost:8080")
-	gatewayURL = envOrDefault("GATEWAY_URL", "http://localhost:8090")
+	gatewayURL = envOrDefault(
+		"GATEWAY_URL",
+		"http://localhost:8090",
+	)
 
 	apiPort := portFromURL(apiURL, "8080")
 	gatewayPort := portFromURL(gatewayURL, "8090")
@@ -95,7 +106,8 @@ func setupLocal() {
 	gatewayProcess.Dir = gatewayDir
 	gatewayProcess.Stdout = os.Stdout
 	gatewayProcess.Stderr = os.Stderr
-	if err := gatewayProcess.Start(); err != nil {
+	err = gatewayProcess.Start()
+	if err != nil {
 		log.Error().Err(err).Msg("failed to start follow-image-gateway")
 		os.Exit(1)
 	}
@@ -118,7 +130,8 @@ func setupLocal() {
 	)
 	apiProcess.Stdout = os.Stdout
 	apiProcess.Stderr = os.Stderr
-	if err := apiProcess.Start(); err != nil {
+	err = apiProcess.Start()
+	if err != nil {
 		log.Error().Err(err).Msg("failed to start follow-api")
 		_ = gatewayProcess.Process.Kill()
 		os.Exit(1)
@@ -159,8 +172,11 @@ func setupDocker() {
 	}
 
 	for k, v := range envOverrides {
-		if err := os.Setenv(k, v); err != nil {
-			log.Error().Str("key", k).Err(err).Msg("failed to set env override")
+		err := os.Setenv(k, v)
+		if err != nil {
+			log.Error().Str("key", k).Err(err).Msg(
+				"failed to set env override",
+			)
 			os.Exit(1)
 		}
 	}
@@ -173,7 +189,8 @@ func setupDocker() {
 	composeStack = stack
 
 	ctx := context.Background()
-	if err := composeStack.Up(ctx, compose.Wait(true)); err != nil {
+	err = composeStack.Up(ctx, compose.Wait(true))
+	if err != nil {
 		log.Error().Err(err).Msg("failed to start compose stack")
 		os.Exit(1)
 	}
@@ -199,10 +216,11 @@ func teardownDocker() {
 		return
 	}
 	ctx := context.Background()
-	if err := composeStack.Down(
+	err := composeStack.Down(
 		ctx,
 		compose.RemoveVolumes(true),
-	); err != nil {
+	)
+	if err != nil {
 		log.Error().Err(err).Msg("failed to tear down compose stack")
 	}
 }
@@ -215,7 +233,8 @@ func killProcess(name string, cmd *exec.Cmd) {
 		Str("name", name).
 		Int("pid", cmd.Process.Pid).
 		Msg("stopping service")
-	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+	err := cmd.Process.Signal(syscall.SIGTERM)
+	if err != nil {
 		log.Warn().
 			Str("name", name).
 			Err(err).
