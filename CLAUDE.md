@@ -220,7 +220,7 @@ go run ./cmd/server -port 3000 -log-level debug -runtime-timeout 10s
 
 # Quality gates (mandatory after every change)
 gofumpt -w . && golines -w --max-len=80 .
-go vet ./... && ./custom-gcl run -c .golangci-custom.yml ./...
+go vet ./... && golangci-lint run -c .golangci.yml ./... --fix
 go test -race -cover ./...
 go mod tidy
 go run ./cmd/server -runtime-timeout 10s  # Verify startup
@@ -243,7 +243,7 @@ docker compose up -d
 
 # Quality gates (mandatory after every change)
 gofumpt -w . && golines -w --max-len=80 .
-go vet ./... && ./custom-gcl run -c .golangci-custom.yml ./... --fix
+go vet ./... && golangci-lint run -c .golangci.yml ./... --fix
 go test -race -cover ./...
 go mod tidy
 go run ./cmd/server -runtime-timeout 10s  # Verify startup
@@ -283,7 +283,7 @@ flutter test integration_test/
 ```bash
 # Quality gates (mandatory after every change)
 gofumpt -w . && golines -w --max-len=80 .
-go vet ./... && ./custom-gcl run -c .golangci-custom.yml ./... --fix
+go vet ./... && golangci-lint run -c .golangci.yml ./... --fix
 go test -race -cover ./...
 go mod tidy
 ```
@@ -294,7 +294,7 @@ cd tests/integration/
 
 # Quality gates (mandatory after every change)
 gofumpt -w . && golines -w --max-len=80 .
-./custom-gcl run --build-tags integration -c .golangci-custom.yml ./...
+golangci-lint run --build-tags integration -c .golangci.yml ./...
 go mod tidy
 ```
 
