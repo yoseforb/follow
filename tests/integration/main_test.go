@@ -4,11 +4,13 @@ package integration_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -28,9 +30,11 @@ var (
 
 // Lifecycle handles — used only by setup/teardown.
 var (
-	composeStack   compose.ComposeStack
-	apiProcess     *exec.Cmd
-	gatewayProcess *exec.Cmd
+	composeStack     compose.ComposeStack
+	apiProcess       *exec.Cmd
+	gatewayProcess   *exec.Cmd
+	apiDrainWait     func()
+	gatewayDrainWait func()
 )
 
 func initLogger() {
@@ -104,8 +108,12 @@ func setupLocal() {
 		"-runtime-timeout", "0",
 	)
 	gatewayProcess.Dir = gatewayDir
-	gatewayProcess.Stdout = os.Stdout
-	gatewayProcess.Stderr = os.Stderr
+	// Setpgid places the process in its own process group. When we later
+	// signal -pgid, both the `go run` parent and the compiled server
+	// grandchild receive the signal, so no orphaned process holds the test
+	// binary's I/O open after cleanup.
+	gatewayProcess.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	gatewayDrainWait = pipeOutput(gatewayProcess)
 	err = gatewayProcess.Start()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to start follow-image-gateway")
@@ -128,12 +136,20 @@ func setupLocal() {
 		os.Environ(),
 		"GATEWAY_BASE_URL=http://localhost:"+gatewayPort,
 	)
-	apiProcess.Stdout = os.Stdout
-	apiProcess.Stderr = os.Stderr
+	// Setpgid places the process in its own process group. When we later
+	// signal -pgid, both the `go run` parent and the compiled server
+	// grandchild receive the signal, so no orphaned process holds the test
+	// binary's I/O open after cleanup.
+	apiProcess.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	apiDrainWait = pipeOutput(apiProcess)
 	err = apiProcess.Start()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to start follow-api")
-		_ = gatewayProcess.Process.Kill()
+		killProcessGroup(
+			"follow-image-gateway",
+			gatewayProcess,
+			gatewayDrainWait,
+		)
 		os.Exit(1)
 	}
 
@@ -207,8 +223,12 @@ func setupDocker() {
 }
 
 func teardownLocal() {
-	killProcess("follow-api", apiProcess)
-	killProcess("follow-image-gateway", gatewayProcess)
+	killProcessGroup("follow-api", apiProcess, apiDrainWait)
+	killProcessGroup(
+		"follow-image-gateway",
+		gatewayProcess,
+		gatewayDrainWait,
+	)
 }
 
 func teardownDocker() {
@@ -225,34 +245,104 @@ func teardownDocker() {
 	}
 }
 
-func killProcess(name string, cmd *exec.Cmd) {
+// pipeOutput attaches pipes to cmd's stdout and stderr and starts goroutines
+// that copy output to os.Stdout/os.Stderr. Using pipes instead of assigning
+// os.Stdout/os.Stderr directly prevents the file descriptors from being
+// inherited by grandchild processes spawned by `go run`, so orphaned
+// grandchildren cannot keep the test binary's I/O open after cleanup.
+//
+// pipeOutput returns a drain function that blocks until both copy goroutines
+// have finished. The caller must invoke this function after cmd.Wait()
+// returns to guarantee all buffered output is flushed before os.Exit.
+//
+// Must be called before cmd.Start().
+func pipeOutput(cmd *exec.Cmd) func() {
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create stdout pipe")
+		os.Exit(1)
+	}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create stderr pipe")
+		os.Exit(1)
+	}
+
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(os.Stdout, stdoutPipe)
+	}()
+
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(os.Stderr, stderrPipe)
+	}()
+
+	return wg.Wait
+}
+
+// killProcessGroup sends SIGTERM to the entire process group of cmd
+// (negative pgid), waits up to 5 seconds for a graceful exit, then sends
+// SIGKILL to the group if it has not stopped. Signaling the whole group
+// ensures that grandchild processes created by `go run` (the compiled server
+// binary) are also terminated. After the process exits, drain is called to
+// block until all pipe-copy goroutines have flushed their output.
+func killProcessGroup(name string, cmd *exec.Cmd, drain func()) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
+
+	pgid := cmd.Process.Pid
+
 	log.Info().
 		Str("name", name).
-		Int("pid", cmd.Process.Pid).
+		Int("pid", pgid).
 		Msg("stopping service")
-	err := cmd.Process.Signal(syscall.SIGTERM)
+
+	// Signal the entire process group (negative pid = process group id).
+	err := syscall.Kill(-pgid, syscall.SIGTERM)
 	if err != nil {
 		log.Warn().
 			Str("name", name).
 			Err(err).
-			Msg("SIGTERM failed, sending SIGKILL")
+			Msg("SIGTERM to process group failed, killing direct process")
 		_ = cmd.Process.Kill()
+
+		if drain != nil {
+			drain()
+		}
+
 		return
 	}
+
 	done := make(chan error, 1)
+
 	go func() { done <- cmd.Wait() }()
+
 	select {
 	case <-done:
 		log.Info().Str("name", name).Msg("service stopped gracefully")
 	case <-time.After(5 * time.Second):
 		log.Warn().
 			Str("name", name).
-			Msg("service did not stop in 5s, sending SIGKILL")
-		_ = cmd.Process.Kill()
+			Msg("service did not stop in 5s, killing process group")
+		// Kill the entire group to ensure grandchildren are also terminated.
+		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 		<-done
+	}
+
+	// Wait for the pipe-copy goroutines to finish draining. cmd.Wait()
+	// closes the pipe write ends, causing the goroutines to receive EOF and
+	// return. Without this wait, output written just before process exit
+	// could be lost, and — more importantly — we ensure the goroutines have
+	// fully exited before os.Exit is called by TestMain.
+	if drain != nil {
+		drain()
 	}
 }
 
