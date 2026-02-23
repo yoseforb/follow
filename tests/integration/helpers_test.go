@@ -4,8 +4,6 @@ package integration_test
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -70,12 +68,6 @@ func loadTestImage(t *testing.T, filename string) []byte {
 	)
 
 	return data
-}
-
-// sha256Hex computes SHA256 hash of data, returns lowercase hex string (64 chars).
-func sha256Hex(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
 }
 
 // doRequest sends an HTTP request and returns the response.

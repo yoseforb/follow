@@ -26,7 +26,7 @@ var waypointImageMap = map[int]string{
 // covering user creation, route lifecycle, waypoint management, image
 // upload/replace, and route deletion.
 //
-//nolint:maintidx // integration test: sequential steps require higher complexity
+//nolint:maintidx,gocognit // integration test: sequential steps require higher complexity
 func TestFullAPIBehavioralFlow(t *testing.T) {
 	// ------------------------------------------------------------------ //
 	// Step 1: Create anonymous user                                        //
@@ -640,12 +640,13 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 	)
 
 	// ------------------------------------------------------------------ //
-	// Step 13: Replace waypoint image (prepare + upload + confirm)        //
+	// Step 13: Replace waypoint image (prepare + upload + async swap)     //
 	// ------------------------------------------------------------------ //
 	t.Log("Step 13: Replace waypoint image")
 
-	// 13a. Prepare.
-	t.Log("Step 13a: Prepare image replacement")
+	// 13a. Prepare — now includes marker coordinates (sent at prepare time,
+	// stored as pending fields, atomically swapped by Valkey consumer).
+	t.Log("Step 13a: Prepare image replacement (with markers)")
 
 	step13aResp := doRequest(
 		t,
@@ -660,6 +661,8 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 			"file_name":       "pexels-tuurt-2954405.jpg",
 			"file_size_bytes": 1400255,
 			"content_type":    "image/jpeg",
+			"marker_x":        0.55,
+			"marker_y":        0.65,
 		},
 		authToken,
 	)
@@ -689,7 +692,7 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 		"Step 13a: expires_at must not be empty",
 	)
 
-	// 13b. Upload replacement image.
+	// 13b. Upload replacement image to gateway.
 	t.Log("Step 13b: Upload replacement image")
 
 	replacementImage := loadTestImage(t, "pexels-tuurt-2954405.jpg")
@@ -720,62 +723,128 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 		uploadBytes13b,
 	)
 
-	// 13c. Wait briefly for the replacement image to be processed.
-	t.Log("Step 13c: Wait for replacement image to be processed")
+	// 13c. Wait for async Valkey swap and verify replacement.
+	// The gateway processes the image, publishes to Valkey image:result,
+	// and the API consumer atomically swaps the waypoint's image + markers.
+	// No client confirm call — the swap is fully automatic.
+	t.Log("Step 13c: Wait for async image swap via Valkey")
 
-	time.Sleep(5 * time.Second)
+	swapDeadline := time.Now().Add(15 * time.Second)
+	swapVerified := false
 
-	// 13d. Confirm image replacement.
-	t.Log("Step 13d: Confirm image replacement")
+	for time.Now().Before(swapDeadline) {
+		checkResp := doRequest(
+			t,
+			http.MethodGet,
+			fmt.Sprintf(
+				"%s/api/v1/routes/%s?include_images=true",
+				apiURL,
+				routeID,
+			),
+			nil,
+			authToken,
+		)
 
-	replacementHash := sha256Hex(replacementImage)
+		if checkResp.StatusCode != http.StatusOK {
+			checkResp.Body.Close()
+			time.Sleep(1 * time.Second)
+
+			continue
+		}
+
+		var checkBody map[string]any
+
+		decErr := json.NewDecoder(checkResp.Body).Decode(&checkBody)
+		checkResp.Body.Close()
+
+		if decErr != nil {
+			time.Sleep(1 * time.Second)
+
+			continue
+		}
+
+		wps, ok := checkBody["waypoints"].([]any)
+		if !ok {
+			time.Sleep(1 * time.Second)
+
+			continue
+		}
+
+		for _, wRaw := range wps {
+			wp, ok := wRaw.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			wpID, _ := wp["waypoint_id"].(string)
+			if wpID != waypointIDs[1] {
+				continue
+			}
+
+			imgID, _ := wp["image_id"].(string)
+			if imgID == replacePrep.ImageID {
+				// Image swapped — verify markers were atomically updated.
+				markerX, _ := wp["marker_x"].(float64)
+				markerY, _ := wp["marker_y"].(float64)
+
+				assert.InDelta(t, 0.55, markerX, 0.001,
+					"Step 13c: after swap, marker_x must be 0.55",
+				)
+				assert.InDelta(t, 0.65, markerY, 0.001,
+					"Step 13c: after swap, marker_y must be 0.65",
+				)
+
+				swapVerified = true
+			}
+
+			break // found waypointIDs[1], stop iterating waypoints
+		}
+
+		if swapVerified {
+			t.Logf(
+				"Step 13c: waypoint[1] image swapped to %s",
+				replacePrep.ImageID,
+			)
+
+			break
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
+	require.True(t, swapVerified,
+		"Step 13c: waypoint[1] image was not swapped to %s within 15s",
+		replacePrep.ImageID,
+	)
+
+	// 13d. Verify route stayed PUBLISHED throughout replacement.
+	t.Log("Step 13d: Verify route remains published after replacement")
 
 	step13dResp := doRequest(
 		t,
-		http.MethodPost,
+		http.MethodGet,
 		fmt.Sprintf(
-			"%s/api/v1/routes/%s/waypoints/%s/replace-image/confirm",
+			"%s/api/v1/routes/%s",
 			apiURL,
 			routeID,
-			waypointIDs[1],
 		),
-		map[string]any{
-			"image_id":  replacePrep.ImageID,
-			"file_hash": replacementHash,
-			"marker_x":  0.55,
-			"marker_y":  0.65,
-		},
+		nil,
 		authToken,
 	)
 
 	require.Equal(t, http.StatusOK, step13dResp.StatusCode,
-		"Step 13d: expected 200 from POST .../replace-image/confirm",
+		"Step 13d: expected 200 from GET /routes/{routeID}",
 	)
 
 	step13dBody := decodeJSON(t, step13dResp)
 
-	assert.Equal(t, waypointIDs[1], step13dBody["waypoint_id"],
-		"Step 13d: waypoint_id must match waypointIDs[1]",
-	)
-	assert.Equal(t, routeID, step13dBody["route_id"],
-		"Step 13d: route_id must match",
-	)
-	assert.Equal(t, replacePrep.ImageID, step13dBody["image_id"],
-		"Step 13d: image_id must match replacement image_id from prepare",
+	routeObj13d, ok := step13dBody["route"].(map[string]any)
+	require.True(t, ok,
+		"Step 13d: response must contain a 'route' object",
 	)
 
-	markerX13d, _ := step13dBody["marker_x"].(float64)
-	markerY13d, _ := step13dBody["marker_y"].(float64)
-
-	assert.InDelta(t, 0.55, markerX13d, 0.001,
-		"Step 13d: marker_x must be 0.55",
-	)
-	assert.InDelta(t, 0.65, markerY13d, 0.001,
-		"Step 13d: marker_y must be 0.65",
-	)
-
-	assert.NotEmpty(t, step13dBody["replaced_at"],
-		"Step 13d: replaced_at must not be empty",
+	assert.Equal(t, "published", routeObj13d["route_status"],
+		"Step 13d: route must remain published after image replacement",
 	)
 
 	// ------------------------------------------------------------------ //
