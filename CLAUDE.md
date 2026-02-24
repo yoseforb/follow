@@ -461,6 +461,8 @@ Use imperative mood ("add", "fix", "update" -- not "added", "fixed", "updated").
 | Flutter UX design system | `/home/yoseforb/pkg/follow/follow-app/ai-docs/ux-design/` |
 | Flutter API integration guide | `/home/yoseforb/pkg/follow/follow-app/ai-docs/api-integration/` |
 | Gateway pipeline API reference | `/home/yoseforb/pkg/follow/follow-image-gateway/ai-docs/architecture/pipeline-api-reference.md` |
+| **Valkey message contract** | `/home/yoseforb/pkg/follow/ai-docs/contracts/valkey-message-contract.md` |
+| Valkey contract constants (Go) | `/home/yoseforb/pkg/follow/follow-pkg/valkey/contracts.go` |
 | API error architecture guide | `/home/yoseforb/pkg/follow/follow-api/ai-docs/architecture/error-architecture/` |
 | API TDD workflow | `/home/yoseforb/pkg/follow/follow-api/ai-docs/workflows/tdd-red-green-refactor-workflow.md` |
 | Full-stack Docker Compose | `/home/yoseforb/pkg/follow/docker-compose.yml` |
