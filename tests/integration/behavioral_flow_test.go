@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,7 +27,7 @@ var waypointImageMap = map[int]string{
 // covering user creation, route lifecycle, waypoint management, image
 // upload/replace, and route deletion.
 //
-//nolint:maintidx,gocognit // integration test: sequential steps require higher complexity
+//nolint:maintidx,gocognit,gocyclo,cyclop // integration test: sequential steps require higher complexity
 func TestFullAPIBehavioralFlow(t *testing.T) {
 	// ------------------------------------------------------------------ //
 	// Step 1: Create anonymous user                                        //
@@ -336,11 +337,155 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 	}
 
 	// ------------------------------------------------------------------ //
-	// Step 7: Wait for route to reach ready status                        //
+	// Step 7: Wait for route to reach ready status via SSE stream         //
 	// ------------------------------------------------------------------ //
-	t.Log("Step 7: Wait for route to reach ready status")
+	t.Log("Step 7: Wait for route to reach ready status via SSE stream")
 
-	waitForRouteStatus(t, routeID, authToken, "ready", 60*time.Second)
+	// 7a. Start SSE connection in background goroutine.
+	sseURL := fmt.Sprintf(
+		"%s/api/v1/routes/%s/status/stream",
+		apiURL,
+		routeID,
+	)
+
+	sseReqCtx, sseCancel := context.WithTimeout(
+		context.Background(),
+		60*time.Second,
+	)
+	defer sseCancel()
+
+	sseReq, sseErr := http.NewRequest(
+		http.MethodGet,
+		sseURL,
+		nil,
+	)
+	require.NoError(t, sseErr,
+		"Step 7a: failed to create SSE request",
+	)
+
+	sseReq = sseReq.WithContext(sseReqCtx)
+	sseReq.Header.Set("Authorization", "Bearer "+authToken)
+	sseReq.Header.Set("Accept", "text/event-stream")
+	sseReq.Header.Set("Cache-Control", "no-cache")
+
+	type sseResult struct {
+		resp *http.Response
+		err  error
+	}
+	sseCh := make(chan sseResult, 1)
+
+	sseClient := &http.Client{Timeout: 0}
+	go func() {
+		resp, err := sseClient.Do(sseReq)
+		sseCh <- sseResult{resp: resp, err: err}
+	}()
+
+	// Small sleep to let SSE goroutine start connecting.
+	time.Sleep(500 * time.Millisecond)
+
+	// 7b. Images were already uploaded in Step 6. Now wait for SSE
+	// response headers to arrive.
+	var sseResp *http.Response
+	select {
+	case result := <-sseCh:
+		require.NoError(t, result.err,
+			"Step 7b: failed to connect to SSE stream",
+		)
+		sseResp = result.resp
+	case <-sseReqCtx.Done():
+		t.Fatal("Step 7b: timeout waiting for SSE response")
+	}
+
+	require.Equal(t, http.StatusOK, sseResp.StatusCode,
+		"Step 7b: expected 200 OK from SSE endpoint",
+	)
+
+	require.Equal(t, "text/event-stream",
+		sseResp.Header.Get("Content-Type"),
+		"Step 7b: expected Content-Type: text/event-stream",
+	)
+
+	defer sseResp.Body.Close()
+
+	// 7c. Read SSE events until "complete" is received or timeout.
+	readCtx, readCancel := context.WithTimeout(
+		context.Background(),
+		60*time.Second,
+	)
+	defer readCancel()
+
+	events := make(chan SSEEvent, 100)
+	go readSSEEvents(readCtx, sseResp.Body, events)
+
+	seenEventTypes := make(map[string]bool)
+	eventDeadline := time.After(55 * time.Second)
+
+eventLoop:
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				// Channel closed
+				break eventLoop
+			}
+
+			seenEventTypes[event.Type] = true
+			t.Logf("Step 7c: SSE Event: type=%s, data=%s",
+				event.Type, event.Data)
+
+			if event.Type == "complete" {
+				break eventLoop
+			}
+
+		case <-eventDeadline:
+			t.Logf("Step 7c: collected event types: %v",
+				seenEventTypes)
+			t.Fatalf(
+				"Step 7c: timeout waiting for SSE complete event",
+			)
+		}
+	}
+
+	// 7d. Verify we received a "complete" event.
+	require.True(t, seenEventTypes["complete"],
+		"Step 7d: must receive complete event when images are "+
+			"processed",
+	)
+
+	// 7e. Verify we saw at least one progress event (processing, ready,
+	// or heartbeat) before complete.
+	sawProgressEvent := seenEventTypes["processing"] ||
+		seenEventTypes["ready"] ||
+		seenEventTypes["heartbeat"]
+	require.True(t, sawProgressEvent,
+		"Step 7e: must receive at least one progress event "+
+			"(processing/ready/heartbeat) before complete",
+	)
+
+	t.Log("Step 7: SSE verification complete — route reached ready status")
+
+	// 7f. Final verification: check that route status is "ready" via
+	// HTTP GET (confirms SSE events matched actual state).
+	finalStatusResp := doRequest(
+		t,
+		http.MethodGet,
+		apiURL+"/api/v1/routes/"+routeID,
+		nil,
+		authToken,
+	)
+	require.Equal(t, http.StatusOK, finalStatusResp.StatusCode,
+		"Step 7f: expected 200 from GET /api/v1/routes/{routeID}",
+	)
+
+	finalStatusBody := decodeJSON(t, finalStatusResp)
+	finalRouteObj, ok := finalStatusBody["route"].(map[string]any)
+	require.True(t, ok,
+		"Step 7f: response must contain a 'route' object",
+	)
+
+	assert.Equal(t, "ready", finalRouteObj["route_status"],
+		"Step 7f: route_status must be ready after SSE complete",
+	)
 
 	// ------------------------------------------------------------------ //
 	// Step 8: Publish route (READY → PUBLISHED)                           //

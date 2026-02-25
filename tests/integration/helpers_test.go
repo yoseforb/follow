@@ -3,17 +3,21 @@
 package integration_test
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	valkeygo "github.com/valkey-io/valkey-go"
 )
 
 // PresignedURLEntry is a single presigned upload URL entry returned by
@@ -233,97 +237,97 @@ func deleteRoute(t *testing.T, routeID, authToken string) {
 	}
 }
 
-// waitForRouteStatus polls GET /api/v1/routes/{routeID} every 1s until
-// route_status matches expectedStatus or timeout expires.
-// Non-200 HTTP responses and JSON decode failures are tolerated during polling
-// (logged and retried). Only calls t.Fatalf on timeout.
-func waitForRouteStatus(
-	t *testing.T,
-	routeID, authToken, expectedStatus string,
-	timeout time.Duration,
+// SSEEvent represents a parsed Server-Sent Event.
+type SSEEvent struct {
+	Type string
+	Data string
+	ID   string
+}
+
+// readSSEEvents reads Server-Sent Events from an io.Reader until the context
+// is cancelled or the reader returns io.EOF.
+// Events are sent to the events channel.
+func readSSEEvents(
+	ctx context.Context,
+	reader io.Reader,
+	events chan<- SSEEvent,
 ) {
-	t.Helper()
+	defer close(events)
 
-	deadline := time.Now().Add(timeout)
+	scanner := bufio.NewScanner(reader)
+	var currentEvent SSEEvent
 
-	for time.Now().Before(deadline) {
-		func() {
-			resp := doRequest(
-				t,
-				http.MethodGet,
-				apiURL+"/api/v1/routes/"+routeID,
-				nil,
-				authToken,
-			)
-			defer resp.Body.Close()
-
-			if resp.StatusCode != http.StatusOK {
-				t.Logf(
-					"waitForRouteStatus: route %s returned HTTP %d, retrying",
-					routeID,
-					resp.StatusCode,
-				)
-
-				return
-			}
-
-			var result map[string]any
-
-			err := json.NewDecoder(resp.Body).Decode(&result)
-			if err != nil {
-				t.Logf(
-					"waitForRouteStatus: route %s JSON decode error: %v, retrying",
-					routeID,
-					err,
-				)
-
-				return
-			}
-
-			routeObj, ok := result["route"].(map[string]any)
-			if !ok {
-				t.Logf(
-					"waitForRouteStatus: route %s response missing \"route\" object, retrying",
-					routeID,
-				)
-
-				return
-			}
-
-			status, _ := routeObj["route_status"].(string)
-			if status == expectedStatus {
-				t.Logf(
-					"waitForRouteStatus: route %s reached status %q",
-					routeID,
-					expectedStatus,
-				)
-
-				// Signal success by advancing deadline so the outer loop exits.
-				deadline = time.Time{}
-
-				return
-			}
-
-			t.Logf(
-				"waitForRouteStatus: route %s status=%q, waiting for %q",
-				routeID,
-				status,
-				expectedStatus,
-			)
-		}()
-
-		// deadline set to zero means we reached the expected status.
-		if deadline.IsZero() {
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
 			return
+		default:
 		}
 
-		time.Sleep(1 * time.Second)
+		line := scanner.Text()
+
+		if line == "" {
+			// Empty line marks end of event
+			emitEventIfNeeded(ctx, &currentEvent, events)
+			currentEvent = SSEEvent{}
+			continue
+		}
+
+		parseSSELine(line, &currentEvent)
 	}
 
-	t.Fatalf(
-		"waitForRouteStatus: route %s did not reach status %q within %s",
-		routeID,
-		expectedStatus,
-		timeout,
+	// Handle final event if no trailing newline
+	emitEventIfNeeded(ctx, &currentEvent, events)
+}
+
+func parseSSELine(line string, event *SSEEvent) {
+	switch {
+	case strings.HasPrefix(line, "event:"):
+		_, val, _ := strings.Cut(line, ":")
+		event.Type = strings.TrimSpace(val)
+	case strings.HasPrefix(line, "data:"):
+		_, val, _ := strings.Cut(line, ":")
+		event.Data = strings.TrimSpace(val)
+	case strings.HasPrefix(line, "id:"):
+		_, val, _ := strings.Cut(line, ":")
+		event.ID = strings.TrimSpace(val)
+	}
+}
+
+func emitEventIfNeeded(
+	ctx context.Context,
+	event *SSEEvent,
+	events chan<- SSEEvent,
+) {
+	if event.Type == "" && event.Data == "" {
+		return
+	}
+
+	if event.Type == "" {
+		event.Type = "message"
+	}
+
+	select {
+	case events <- *event:
+	case <-ctx.Done():
+	}
+}
+
+// newValkeyClient creates a new Valkey client.
+//
+//nolint:unused // Helper for future SSE/Valkey integration tests
+func newValkeyClient(t *testing.T) valkeygo.Client {
+	t.Helper()
+
+	client, err := valkeygo.NewClient(valkeygo.ClientOption{
+		InitAddress:  []string{valkeyAddress},
+		DisableCache: true,
+	})
+	require.NoError(t, err,
+		"newValkeyClient: failed to create client",
 	)
+
+	t.Cleanup(func() { client.Close() })
+
+	return client
 }
