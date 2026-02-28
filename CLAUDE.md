@@ -199,7 +199,7 @@ See `ai-docs/architecture/image-gateway-architecture.md` for the full future arc
 - **Error handling**: Rich domain errors with `errors.Is()` / `fmt.Errorf("%w: detail", Err)`. Errors defined in each package's `errors.go`. Infrastructure errors mapped to domain errors at repository boundary.
 - **Testing**: Classical/Detroit style -- hand-written fakes (NOT mock frameworks), verify outcomes not interactions, table-driven tests, `t.Parallel()`.
 - **Code formatting**: `gofumpt -w .` and `golines -w --max-len=80 .`
-- **Linting**: `./custom-gcl run -c .golangci-custom.yml ./...` (includes NilAway plugin)
+- **Linting**: `golangci-lint run -c .golangci.yml ./... --fix`
 - **Module communication**: Generic Command/Query interface pattern
 - **Commit format**: `type(scope): description` with imperative mood
 
