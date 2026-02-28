@@ -425,10 +425,16 @@ go func() {
     backoff := 100 * time.Millisecond
     for {
         consumer := newConsumer()
+        startTime := time.Now()
         startErr := consumer.Start(ctx)
         if ctx.Err() != nil {
             // App is shutting down — not an error.
             return
+        }
+        // Reset backoff if consumer ran longer than the cap,
+        // indicating the failure is unrelated to the previous one.
+        if time.Since(startTime) > 30*time.Second {
+            backoff = 100 * time.Millisecond
         }
         if startErr != nil {
             a.log.Error().
@@ -466,6 +472,7 @@ The `a.imageResultConsumer` field becomes a pointer to the most recent consumer,
 - Backoff starts at 100ms, caps at 30s
 - On application shutdown (context cancel), supervisor exits without starting another consumer
 - Server startup still waits for the first consumer to be ready before accepting requests
+- Backoff resets to 100ms if the consumer ran longer than the backoff cap (30s) before failing
 - `go run ./cmd/server -runtime-timeout 10s` succeeds
 
 **Dependencies**: Task 5 (Consumer restartability), Task 4 (handler contract)
@@ -487,6 +494,7 @@ The `a.imageResultConsumer` field becomes a pointer to the most recent consumer,
 - `ErrImageModuleFailed` wrapping `imageDomain.ErrImageNotFound` — image deleted from DB; pointless to retry
 - `ErrRouteModuleFailed` wrapping `routeDomain.ErrWaypointNotFound` — waypoint deleted from DB; pointless to retry
 - `ErrRouteModuleFailed` wrapping `routeDomain.ErrRouteNotFound` — route deleted from DB; pointless to retry
+- `ErrImageModuleFailed` wrapping `imageDomain.ErrInvalidStatusTransition` (or equivalent) — image already expired (e.g., after retry-upload created a new image); retrying won't change expired status
 
 **Transient errors (keep in PEL):**
 - `ErrImageModuleFailed` with any other underlying error (e.g., DB timeout)
@@ -509,6 +517,7 @@ The `a.imageResultConsumer` field becomes a pointer to the most recent consumer,
 - `handleMessage` returns `valkey.HandlerResult`, not `error`
 - Malformed messages (missing field, invalid UUID) return `HandlerResultPermanent`
 - `ErrImageNotFound`, `ErrWaypointNotFound`, `ErrRouteNotFound` errors return `HandlerResultPermanent`
+- Expired image status transition errors (e.g., after retry-upload) return `HandlerResultPermanent`
 - DB/infrastructure errors return `HandlerResultTransient`
 - Success returns `HandlerResultACK`
 - Permanent results are logged at WARN level with message ID and reason
@@ -635,7 +644,7 @@ var RetryUploadWaypointImageResult = Type(
 - `POST /routes/{id}/waypoints/{wid}/retry-upload` returns 200 with `{image_id, upload_url, expires_at}`
 - Returns 404 if route or waypoint not found
 - Returns 403 if route not owned by user
-- Returns 422 if waypoint's image is NOT in `failed` state (not applicable for retry)
+- Returns 422 (`invalid_input`) if waypoint's image is NOT in `failed` state, with message "waypoint image is not in failed state"
 - Returns 401 if JWT missing/invalid
 - After calling retry-upload, uploading the returned URL results in the route eventually transitioning to `ready`
 - Old upload guard for the failed image ID is cleared (best-effort)
@@ -707,6 +716,10 @@ if waypoint.HasPendingReplacement() {
 - After the first replacement completes (image processed), a second `replace-image/prepare` succeeds (because `HasPendingReplacement()` is false once committed)
 - `go test -race -cover ./...` passes in `follow-api`
 
+**Known Limitation**
+
+If a client starts a replacement (`replace-image/prepare`) but never uploads the image (client crash, network failure), the pending replacement blocks future replacements indefinitely. This is a client crash recovery problem, not an async pipeline resilience issue, and is tracked as a separate follow-up task: "expire stale pending replacements after TTL".
+
 **Dependencies**: None (independent domain change)
 
 ---
@@ -760,7 +773,12 @@ if statusErr == nil {
     }
 }
 // statusErr is non-fatal for SSE: if we can't get route status,
-// proceed with normal Valkey polling.
+// log a warning and proceed with normal Valkey polling.
+if statusErr != nil {
+    s.log.Warn().Err(statusErr).
+        Str("route_id", routeID.String()).
+        Msg("failed to check route status at SSE startup, falling back to Valkey polling")
+}
 ```
 
 **Acceptance Criteria**
@@ -1177,7 +1195,7 @@ Tasks 14-16 (integration tests) — depend on above implementations,
 5. Task 10 — retry-upload endpoint (full stack), 1.5 days
 6. Tasks 14-16 — integration tests, 1 day
 
-**Total**: ~7 development days, ~27 story points
+**Total**: ~7 development days, 36 story points
 
 ---
 
