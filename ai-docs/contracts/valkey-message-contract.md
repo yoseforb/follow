@@ -103,9 +103,34 @@ One-time claim: SET NX succeeds on first upload attempt, fails on duplicates (40
 
 ---
 
+## Key Pattern 4: `image:result:dlq` (Dead Letter Queue Stream)
+
+| Aspect | Value |
+|--------|-------|
+| Type | Redis Stream |
+| Stream Key | `image:result:dlq` (`valkey.StreamImageResultDLQ`) |
+| Writer | API consumer (when `delivery_count >= 10`) |
+| Reader | Operator inspection only (no automated consumer) |
+| Trimming | MAXLEN ~1000 |
+
+When the API consumer fails to process a message from `image:result` after 10 delivery attempts, it copies the message to this DLQ stream, then ACKs the original message from the main stream. This prevents poison messages from blocking the consumer group indefinitely.
+
+### Fields
+
+All original fields from the `image:result` message are copied verbatim, plus the following DLQ metadata fields:
+
+| Field | Constant | Type | Description |
+|-------|----------|------|-------------|
+| `dlq_reason` | `valkey.DLQFieldReason` | string | Why it was dead-lettered (e.g. `"max_deliveries_exceeded"`) |
+| `dlq_delivery_count` | `valkey.DLQFieldDeliveryCount` | string | Delivery count at time of DLQ |
+| `dlq_at` | `valkey.DLQFieldAt` | string | RFC3339 timestamp when the message was moved to DLQ |
+
+---
+
 ## Rules
 
 1. **Never use string literals** for Valkey keys, field names, or status values in Go code. Always use `valkey.*` constants from `follow-pkg`.
 2. **Adding a new field or stage?** Add the constant to `follow-pkg/valkey/contracts.go` first, then use it in both services.
 3. **SSE event types** (`"ready"`, `"failed"`, `"processing"`) are the API-to-Flutter contract and live in `follow-api`, not in `follow-pkg`.
 4. **Config YAML files** use raw strings (they're parsed at runtime, not compiled).
+5. **After 10 delivery attempts**, a message is moved to the DLQ stream and ACKed from the main stream.
