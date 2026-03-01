@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	valkeygo "github.com/valkey-io/valkey-go"
+	"github.com/yoseforb/follow-pkg/valkey"
 )
 
 // PresignedURLEntry is a single presigned upload URL entry returned by
@@ -479,7 +481,7 @@ func createRouteWithWaypoints(
 
 // imageStatusKey returns the Valkey key for an image's status hash.
 func imageStatusKey(imageID string) string {
-	return "image:status:" + imageID
+	return fmt.Sprintf("%s:%s", valkey.KeyPrefixImageStatus, imageID)
 }
 
 // waitForImageStatus polls the Valkey hash at image:status:{imageID} every
@@ -502,7 +504,7 @@ func waitForImageStatus(
 	for time.Now().Before(deadline) {
 		fields := hGetAll(t, client, key)
 
-		if fields["stage"] == expectedStage {
+		if fields[valkey.FieldStage] == expectedStage {
 			return
 		}
 
