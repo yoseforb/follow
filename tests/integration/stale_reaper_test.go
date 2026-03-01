@@ -92,6 +92,8 @@ func cleanupImageStatusKey(t *testing.T, imageID string) {
 func TestStaleImageReaper_MarksFailedAfterThreshold(
 	t *testing.T,
 ) {
+	testStart := time.Now().UTC()
+
 	imageID := uuid.NewString()
 	t.Cleanup(func() { cleanupImageStatusKey(t, imageID) })
 
@@ -125,8 +127,76 @@ func TestStaleImageReaper_MarksFailedAfterThreshold(
 		"reaper should set error to 'image processing timed out'",
 	)
 
-	assert.NotEmpty(t, finalFields[valkey.FieldUpdatedAt],
+	updatedAtStr := finalFields[valkey.FieldUpdatedAt]
+	require.NotEmpty(t, updatedAtStr,
 		"reaper should set updated_at when marking as failed",
+	)
+
+	updatedAt, err := time.Parse(time.RFC3339, updatedAtStr)
+	require.NoError(t, err, "updated_at should be valid RFC3339")
+	assert.True(t, updatedAt.After(testStart),
+		"updated_at (%s) should be after test start (%s)",
+		updatedAt, testStart,
+	)
+}
+
+// TestStaleImageReaper_MarksNonValidatingStageAsFailed verifies that
+// the reaper handles non-terminal stages other than "validating". The
+// reaper must mark ANY non-terminal stage as failed, not just the
+// first stage of the pipeline.
+//
+// The test writes a hash with stage=processing (simulating a crash
+// during the processing stage) and verifies the reaper transitions
+// it to "failed" with the expected error message.
+func TestStaleImageReaper_MarksNonValidatingStageAsFailed(
+	t *testing.T,
+) {
+	testStart := time.Now().UTC()
+
+	imageID := uuid.NewString()
+	t.Cleanup(func() { cleanupImageStatusKey(t, imageID) })
+
+	// Write non-terminal stage (processing) to simulate a gateway
+	// crash partway through the pipeline.
+	writeImageStatusHash(t, imageID, valkey.StageProcessing)
+
+	vc := newValkeyClient(t)
+	key := imageStatusKey(imageID)
+
+	// Poll until the reaper marks it as failed or timeout.
+	deadline := time.Now().Add(reaperStaleTimeout)
+	var finalFields map[string]string
+
+	for time.Now().Before(deadline) {
+		finalFields = hGetAll(t, vc, key)
+		if finalFields[valkey.FieldStage] == valkey.StageFailed {
+			break
+		}
+
+		time.Sleep(reaperPollInterval)
+	}
+
+	require.Equal(t, valkey.StageFailed, finalFields[valkey.FieldStage],
+		"reaper should mark stale processing-stage image as failed within %s",
+		reaperStaleTimeout,
+	)
+
+	assert.Equal(t,
+		valkey.ErrorProcessingTimeout,
+		finalFields[valkey.FieldError],
+		"reaper should set error to 'image processing timed out'",
+	)
+
+	updatedAtStr := finalFields[valkey.FieldUpdatedAt]
+	require.NotEmpty(t, updatedAtStr,
+		"reaper should set updated_at when marking as failed",
+	)
+
+	updatedAt, err := time.Parse(time.RFC3339, updatedAtStr)
+	require.NoError(t, err, "updated_at should be valid RFC3339")
+	assert.True(t, updatedAt.After(testStart),
+		"updated_at (%s) should be after test start (%s)",
+		updatedAt, testStart,
 	)
 }
 
