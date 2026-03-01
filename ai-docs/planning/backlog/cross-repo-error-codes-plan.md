@@ -4,12 +4,7 @@
 **Priority**: High (Developer Experience + User-Facing Quality)
 **Affected Repositories**: follow-api, follow-app
 **Contract Location**: `ai-docs/contracts/api-error-codes-contract.md` (coordination repo)
-**Estimated Story Points**: 29
-**Relationship to Existing Plans**: This plan supersedes the "future work" note in
-`flutter-domain-error-display-plan.md` about name-based localization lookup. The
-`flutter-domain-error-display-plan.md` remains valid and must be completed first
-(or concurrently); the `code` field this plan adds is a parallel improvement on
-top of the `name`-based approach already planned there.
+**Estimated Story Points**: 30
 
 ---
 
@@ -24,10 +19,9 @@ for individual domain errors. To display localized error messages or to branch
 logic on specific conditions, the client would need fragile string matching
 against English server messages.
 
-The `flutter-domain-error-display-plan.md` addresses showing the server `message`
-directly in cases where no localized string is known. This plan adds a
-complementary `code` field — a stable, granular, SCREAMING_SNAKE_CASE string that
-identifies the exact domain error — so the Flutter client can:
+This plan adds a `code` field — a stable, granular, SCREAMING_SNAKE_CASE string
+that identifies the exact domain error — to every API error response, so the
+Flutter client can:
 
 1. Look up a pre-translated localized string keyed to the code (e.g.,
    `errorRouteTooManyWaypoints`), rather than displaying the English server
@@ -78,12 +72,11 @@ serializes that instead. This approach:
 
 The formatter is passed to all four `goaXxx.New()` calls in `mountHandlers()`.
 
-### Relationship to `flutter-domain-error-display-plan.md`
+### Client Error Display Strategy
 
-The existing plan proposed using the `fault` field to classify errors. This plan
-**supersedes** that approach: the Flutter client uses only the `code` field for
-all error display decisions. The `fault` field (which Goa adds automatically to
-every response) is ignored by the client.
+The Flutter client uses only the `code` field for all error display decisions.
+The `fault` field (which Goa adds automatically to every response) is ignored
+by the client. The fallback logic is a simple two-tier decision:
 
 ```
 Received error response
@@ -91,18 +84,13 @@ Received error response
     +---> code is present and known in ApiErrorCodes?
     |         YES: use l10n.lookupByCode(code) — pre-translated, works in Hebrew
     |
-    +---> code is present but unknown?
-    |         Show server message as fallback (English)
-    |
-    +---> code is absent or empty (infra error / old server)?
-              Show generic "Something went wrong" message
+    +---> code is unknown, absent, or empty?
+              Show generic localized "Something went wrong" message
 ```
 
-The `flutter-domain-error-display-plan.md` foundational infrastructure (model,
-parser, exception, repository plumbing) remains valid. The `fault`-based
-classification logic from that plan is replaced by code-based classification
-from this plan. When implementing both plans together, use `code` as the sole
-decision signal — do not check `fault` in the Flutter client.
+This means every error the user sees is either a specific localized message
+(for known codes) or a generic localized fallback. No raw English server
+messages are ever shown to the user.
 
 ### Success Criteria
 
@@ -119,7 +107,8 @@ decision signal — do not check `fault` in the Flutter client.
 
 ## Contract Document (Source of Truth)
 
-**Task 0 must be completed before any implementation begins.**
+**Task 0 must be completed before Task 1. Task 1 must be completed before any
+other implementation begins.**
 
 The contract document at `ai-docs/contracts/api-error-codes-contract.md` is the
 single source of truth for the `code` string values. Both the Go constants file
@@ -132,7 +121,41 @@ must be added to the contract document first.
 
 ---
 
-### Task 0 — Create API Error Codes Contract Document
+### Task 0 — Consolidate Duplicate Waypoint Limit Errors
+
+**Story Points**: 1
+**Repo**: `follow-api`
+**Files Affected**:
+- Modified: `internal/modules/route/domain/errors.go`
+- Modified: All files referencing `ErrTooManyWaypoints`
+
+**Description**:
+
+`ErrTooManyWaypoints` and `ErrRouteTooManyWaypoints` in
+`follow-api/internal/modules/route/domain/errors.go` represent the same
+validation: waypoint count exceeds the maximum allowed per route. Having two
+error variables for the same concept creates confusion in the error code
+contract — each would need its own `code` string, but they mean the same thing.
+
+Consolidate into a single error: `ErrRouteTooManyWaypoints`. The route domain
+owns this limit, so the `Route`-prefixed name is correct. Remove
+`ErrTooManyWaypoints` entirely and update all references across the codebase to
+use `ErrRouteTooManyWaypoints` instead.
+
+This must be completed before Task 1 (contract document creation) so the
+contract has exactly one code (`ROUTE_TOO_MANY_WAYPOINTS`) for this validation,
+not two.
+
+**Acceptance Criteria**:
+- `ErrTooManyWaypoints` no longer exists in `domain/errors.go`
+- All former references to `ErrTooManyWaypoints` now use `ErrRouteTooManyWaypoints`
+- `go test -race -cover ./...` passes
+- `go vet ./...` passes
+- `gofumpt -w . && golines -w --max-len=80 .` produces no changes
+
+---
+
+### Task 1 — Create API Error Codes Contract Document
 
 **Story Points**: 2
 **Repo**: Coordination repo (`/home/yoseforb/pkg/follow/`)
@@ -142,8 +165,8 @@ must be added to the contract document first.
 **Description**:
 
 Create the canonical contract document. This document is the single source of
-truth from which both the Go constants file (Task 1) and the Dart constants file
-(Task 5) are derived. Follow the format of
+truth from which both the Go constants file (Task 2) and the Dart constants file
+(Task 6) are derived. Follow the format of
 `ai-docs/contracts/valkey-message-contract.md`.
 
 The document must include:
@@ -201,7 +224,6 @@ Waypoint Validation (400):
 Waypoint Collection / Limits (400):
 - `WAYPOINTS_MINIMUM_REQUIRED` — `ErrMinimumWaypointsRequired` — `invalid_input` — 400
 - `WAYPOINTS_NONE_PROVIDED` — `ErrNoWaypointsProvided` — `invalid_input` — 400
-- `WAYPOINTS_TOO_MANY` — `ErrTooManyWaypoints` — `invalid_input` — 400
 - `ROUTE_TOO_MANY_WAYPOINTS` — `ErrRouteTooManyWaypoints` — `invalid_input` — 400
 - `ROUTE_MAX_WAYPOINTS_EXCEEDED` — `ErrRouteMaxWaypointsExceeded` — `invalid_input` — 400
 - `ROUTE_WAYPOINT_ORDER_INVALID` — `ErrRouteWaypointOrderInvalid` — `invalid_input` — 400
@@ -266,7 +288,7 @@ Route State Machine (422):
 
 ---
 
-### Task 1 — Add Go Error Code Constants to `follow-api`
+### Task 2 — Add Go Error Code Constants to `follow-api`
 
 **Story Points**: 2
 **Repo**: `follow-api`
@@ -392,7 +414,7 @@ const (
 
 ---
 
-### Task 2 — Add Goa Error Formatter with `code` Field
+### Task 3 — Add Goa Error Formatter with `code` Field
 
 **Story Points**: 3
 **Repo**: `follow-api`
@@ -542,7 +564,7 @@ the correct and expected path.
 
 ---
 
-### Task 3 — Unit Tests for Error Formatter
+### Task 4 — Unit Tests for Error Formatter
 
 **Story Points**: 2
 **Repo**: `follow-api`
@@ -616,7 +638,7 @@ tests := []struct {
 
 ---
 
-### Task 4 — Integration Test: Error Code in HTTP Response
+### Task 5 — Integration Test: Error Code in HTTP Response
 
 **Story Points**: 2
 **Repo**: `follow-api`
@@ -637,7 +659,7 @@ Use the existing integration test infrastructure in the project (the
 **Scenarios to test**:
 
 1. POST `/api/v1/routes/{id}/create-waypoints` with 11 waypoints (exceeds limit
-   of 10) — expect 400 with `"code": "WAYPOINTS_TOO_MANY"` in body.
+   of 10) — expect 400 with `"code": "ROUTE_TOO_MANY_WAYPOINTS"` in body.
 2. POST `/api/v1/routes/prepare` with an expired/missing JWT — expect 401 with
    `"code": ""` (auth middleware fires before route service, produces a non-domain
    error).
@@ -659,7 +681,7 @@ For each scenario, assert:
 
 ---
 
-### Task 5 — Add Dart Error Code Constants to `follow-app`
+### Task 6 — Add Dart Error Code Constants to `follow-app`
 
 **Story Points**: 1
 **Repo**: `follow-app`
@@ -701,7 +723,7 @@ abstract final class ApiErrorCodes {
 
   // ── Waypoint collection / limits (400) ────────────────────────────────
   static const String waypointsMinimumRequired = 'WAYPOINTS_MINIMUM_REQUIRED';
-  static const String waypointsTooMany         = 'WAYPOINTS_TOO_MANY';
+  static const String routeTooManyWaypoints     = 'ROUTE_TOO_MANY_WAYPOINTS';
   // ... (all collection codes)
 
   // ── Image validation (400) ────────────────────────────────────────────
@@ -751,21 +773,17 @@ abstract final class ApiErrorCodes {
 
 ---
 
-### Task 6 — Extend `ApiErrorResponse` Model with `code` Field
+### Task 7 — Extend `ApiErrorResponse` Model with `code` Field
 
 **Story Points**: 1
 **Repo**: `follow-app`
 **Files Affected**:
-- Modified: `lib/data/models/api_error_response.dart`
-  (if created by `flutter-domain-error-display-plan.md` Task 1 already; otherwise
-  create it now with both the original fields and `code`)
+- New: `lib/data/models/api_error_response.dart`
 
 **Description**:
 
-This task extends (or creates) `ApiErrorResponse` to parse the `code` field from
-JSON. If `flutter-domain-error-display-plan.md` Task 1 has already been
-implemented, this is a small additive change. If not, implement the full model
-including the `code` field from the start.
+Create `ApiErrorResponse` model to parse error responses from the API, including
+the `code` field for domain error identification.
 
 Add to `ApiErrorResponse`:
 
@@ -802,14 +820,12 @@ The `isDomainError` getter is unchanged.
 
 ---
 
-### Task 7 — Extend `ApiErrorParser` to Surface `code`
+### Task 8 — Extend `ApiErrorParser` to Surface `code`
 
 **Story Points**: 1
 **Repo**: `follow-app`
 **Files Affected**:
-- Modified: `lib/data/repositories/api_error_parser.dart`
-  (if created by `flutter-domain-error-display-plan.md` Task 2 already; otherwise
-  create it now with `code` support from the start)
+- New: `lib/data/repositories/api_error_parser.dart`
 
 **Description**:
 
@@ -851,7 +867,7 @@ No change to `InfraErrorResult`.
 
 ---
 
-### Task 8 — Extend `RouteException` with `code` Field
+### Task 9 — Extend `RouteException` with `code` Field
 
 **Story Points**: 1
 **Repo**: `follow-app`
@@ -860,9 +876,8 @@ No change to `InfraErrorResult`.
 
 **Description**:
 
-Add a `code` field to `RouteException`. This is an additive change on top of
-(or alongside) the `isDomainError` field added by `flutter-domain-error-display-plan.md`
-Task 3.
+Add `isDomainError` and `code` fields to `RouteException` for domain error
+identification and code-based localization lookup.
 
 ```dart
 class RouteException implements Exception {
@@ -895,7 +910,7 @@ call sites unchanged.
 
 ---
 
-### Task 9 — Update Repository Error Paths to Propagate `code`
+### Task 10 — Update Repository Error Paths to Propagate `code`
 
 **Story Points**: 2
 **Repo**: `follow-app`
@@ -905,11 +920,9 @@ call sites unchanged.
 **Description**:
 
 Update all non-success response branches in `HttpRouteRepository` to propagate
-the `code` field from `DomainErrorResult` into `RouteException`. This task
-extends (or replaces) the pattern established in `flutter-domain-error-display-plan.md`
-Task 4.
+the `code` field from `DomainErrorResult` into `RouteException`.
 
-The updated pattern in each error branch:
+The pattern in each error branch:
 
 ```dart
 final ApiErrorParseResult parsed = parseApiError(
@@ -933,8 +946,9 @@ if (parsed is DomainErrorResult) {
 }
 ```
 
-Affected methods are the same as in `flutter-domain-error-display-plan.md`
-Task 4: all non-success branches in `HttpRouteRepository`.
+Affected methods: all non-success branches in `HttpRouteRepository`
+(`prepareRoute()`, `createRouteWithWaypoints()`, `getRoute()`, `listRoutes()`,
+`listDiscoveryRoutes()`, `deleteRoute()`, `publishRoute()`).
 
 **Acceptance Criteria**:
 - `RouteException` thrown from `createRouteWithWaypoints()` on a 400 response
@@ -944,7 +958,7 @@ Task 4: all non-success branches in `HttpRouteRepository`.
 
 ---
 
-### Task 10 — Add Localization Strings for Known Error Codes
+### Task 11 — Add Localization Strings for Known Error Codes
 
 **Story Points**: 3
 **Repo**: `follow-app`
@@ -1010,7 +1024,7 @@ After editing both ARB files, run `flutter gen-l10n` to regenerate
 
 ---
 
-### Task 11 — Add Code-Based Localization Lookup
+### Task 12 — Add Code-Based Localization Lookup
 
 **Story Points**: 2
 **Repo**: `follow-app`
@@ -1042,7 +1056,7 @@ String? localizedMessageForCode(String code, AppLocalizations l10n) {
       return l10n.errorWaypointsMinimumRequired;
     case ApiErrorCodes.maxPendingRoutesExceeded:
       return l10n.errorMaxPendingRoutesExceeded;
-    // ... all MVP codes from Task 10 ...
+    // ... all MVP codes from Task 11 ...
     default:
       return null; // unknown code — let caller apply fallback
   }
@@ -1061,7 +1075,7 @@ only uses `AppLocalizations` which is a generated Dart class).
 
 ---
 
-### Task 12 — Update Error Display in `RouteCreationScreen` to Use Code Lookup
+### Task 13 — Update Error Display in `RouteCreationScreen` to Use Code Lookup
 
 **Story Points**: 2
 **Repo**: `follow-app`
@@ -1073,9 +1087,6 @@ only uses `AppLocalizations` which is a generated Dart class).
 
 Update the `domainError` case in `_localizeUploadError()` to first attempt a
 code-based localized string before falling back to the server `message` field.
-
-This builds on (or replaces) the implementation from
-`flutter-domain-error-display-plan.md` Tasks 6 and 7.
 
 In `route_creation_screen.dart`, the `_localizeUploadError()` method for the
 `domainError` case becomes:
@@ -1089,8 +1100,7 @@ UploadErrorType.domainError =>
   l10n.uploadErrorClientRequest,
 ```
 
-In `route_creation_view_model.dart`, alongside the existing `_domainErrorMessage`
-field (from `flutter-domain-error-display-plan.md` Task 6), add:
+In `route_creation_view_model.dart`, add the domain error fields:
 
 ```dart
 String? _domainErrorCode;
@@ -1128,7 +1138,7 @@ Clear `_domainErrorCode` wherever `_domainErrorMessage` is cleared
 
 ---
 
-### Task 13 — Update `BaseViewModel.executeOperation` to Use Code Lookup
+### Task 14 — Update `BaseViewModel.executeOperation` to Use Code Lookup
 
 **Story Points**: 1
 **Repo**: `follow-app`
@@ -1138,8 +1148,7 @@ Clear `_domainErrorCode` wherever `_domainErrorMessage` is cleared
 **Description**:
 
 Update `executeOperation()` and `executeOperationWithResult()` to attempt a
-code-based localized string lookup before using the raw server message. This
-extends the behavior from `flutter-domain-error-display-plan.md` Task 8.
+code-based localized string lookup before using the raw server message.
 
 Because `BaseViewModel` has no `BuildContext`, the `AppLocalizations` instance
 must be passed as a parameter or the ViewModel must store a reference. Follow
@@ -1152,7 +1161,7 @@ non-empty, store the code in `_errorCode` and let the UI layer perform the
 code-to-localized-string translation when rendering `errorMessage`. Document
 this clearly so the UI layer knows to call `localizedMessageForCode()`.
 
-This task may be deferred after Task 12 ships if the simpler server-message
+This task may be deferred after Task 13 ships if the simpler server-message
 approach already provides sufficient quality.
 
 **Acceptance Criteria**:
@@ -1163,7 +1172,7 @@ approach already provides sufficient quality.
 
 ---
 
-### Task 14 — Unit Tests for Dart Error Code Layer
+### Task 15 — Unit Tests for Dart Error Code Layer
 
 **Story Points**: 2
 **Repo**: `follow-app`
@@ -1177,7 +1186,7 @@ approach already provides sufficient quality.
 
 **Description**:
 
-Unit tests for all new Dart behavior introduced in Tasks 5–13.
+Unit tests for all new Dart behavior introduced in Tasks 6–14.
 
 **`api_error_codes_test.dart`** — sanity check that constants have expected values:
 ```dart
@@ -1192,7 +1201,7 @@ test('routeNotFound code matches contract', () {
 - Known code → non-null localized string
 - Empty string → null
 - Unknown string → null
-- All MVP codes from Task 10 have a non-null result
+- All MVP codes from Task 11 have a non-null result
 
 **`api_error_response_test.dart` additions**:
 - `fromJson` with `code` present → `code` is populated
@@ -1216,7 +1225,7 @@ test('routeNotFound code matches contract', () {
 
 ---
 
-### Task 15 — Manual QA Verification
+### Task 16 — Manual QA Verification
 
 **Story Points**: 1
 **Files Affected**: None (testing only)
@@ -1228,7 +1237,7 @@ Requires follow-api and follow-app running locally together.
 
 **Scenario 1 — Too many waypoints (400 + code, localized)**:
 1. Attempt to upload a route with 11 waypoints
-2. Confirm HTTP response body contains `"code": "WAYPOINTS_TOO_MANY"`
+2. Confirm HTTP response body contains `"code": "ROUTE_TOO_MANY_WAYPOINTS"`
 3. In Flutter client (English): error banner shows pre-translated English string
    from ARB, not the raw server message
 4. In Flutter client (Hebrew): error banner shows the Hebrew ARB string
@@ -1271,73 +1280,54 @@ Requires follow-api and follow-app running locally together.
 ### Dependency Chain
 
 ```
-Task 0 (Contract doc) — must come first
-  ├─> Task 1 (Go constants)
-  │     └─> Task 2 (Go formatter)
-  │           └─> Task 3 (Go formatter tests)
-  │                 └─> Task 4 (Go integration tests)
-  │
-  └─> Task 5 (Dart constants)
-        ├─> Task 6 (ApiErrorResponse.code)
-        │     └─> Task 7 (ApiErrorParser.code)
-        │           └─> Task 8 (RouteException.code)
-        │                 └─> Task 9 (Repository error paths)
+Task 0 (Consolidate errors) — must come first
+  └─> Task 1 (Contract doc)
+        ├─> Task 2 (Go constants)
+        │     └─> Task 3 (Go formatter)
+        │           └─> Task 4 (Go formatter tests)
+        │                 └─> Task 5 (Go integration tests)
         │
-        └─> Task 10 (ARB localization strings)
-              └─> Task 11 (Localizer utility)
-                    ├─> Task 12 (RouteCreationScreen display)
-                    └─> Task 13 (BaseViewModel display)
-                          └─> Task 14 (Dart tests)
-                                └─> Task 15 (Manual QA)
+        └─> Task 6 (Dart constants)
+              ├─> Task 7 (ApiErrorResponse.code)
+              │     └─> Task 8 (ApiErrorParser.code)
+              │           └─> Task 9 (RouteException.code)
+              │                 └─> Task 10 (Repository error paths)
+              │
+              └─> Task 11 (ARB localization strings)
+                    └─> Task 12 (Localizer utility)
+                          ├─> Task 13 (RouteCreationScreen display)
+                          └─> Task 14 (BaseViewModel display)
+                                └─> Task 15 (Dart tests)
+                                      └─> Task 16 (Manual QA)
 ```
 
 ### Recommended Sequential Order for Single Agent
 
-**Go work first (Tasks 0–4)**: 0 → 1 → 2 → 3 → 4
+**Go work first (Tasks 0–5)**: 0 → 1 → 2 → 3 → 4 → 5
 
-**Dart work second (Tasks 5–15)**: 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15
+**Dart work second (Tasks 6–16)**: 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16
 
-Tasks 5–9 are prerequisites for Tasks 10–14. Tasks 10–11 can be done in
-parallel with Tasks 12–13 if using two agents.
+Tasks 6–10 are prerequisites for Tasks 11–15. Tasks 11–12 can be done in
+parallel with Tasks 13–14 if using two agents.
 
 ### Parallel Agent Split
 
 If splitting across agents:
-- **backend-api-engineer**: Tasks 0, 1, 2, 3, 4
-- **frontend-flutter-engineer**: Tasks 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+- **backend-api-engineer**: Tasks 0, 1, 2, 3, 4, 5
+- **frontend-flutter-engineer**: Tasks 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
 
-The backend work (Tasks 0–4) is a prerequisite for fully testing the Flutter
-work, but the Flutter implementation (Tasks 5–13) can be written and unit-tested
+The backend work (Tasks 0–5) is a prerequisite for fully testing the Flutter
+work, but the Flutter implementation (Tasks 6–14) can be written and unit-tested
 against mock responses before the backend ships.
 
 ---
 
 ## Relationship to Existing Plans
 
-### `flutter-domain-error-display-plan.md`
-
-Status: Backlog — must be implemented as a prerequisite or concurrently.
-
-That plan establishes the foundational infrastructure this plan extends:
-- `ApiErrorResponse` model (Task 1 there → Task 6 here extends it)
-- `ApiErrorParser` utility (Task 2 there → Task 7 here extends it)
-- `RouteException.isDomainError` field (Task 3 there → Task 8 here extends it)
-- Repository error path updates (Task 4 there → Task 9 here extends it)
-- `UploadErrorType.domainError` + ViewModel + Screen (Tasks 5–7 there → Task 12 here extends them)
-- `BaseViewModel` domain message preservation (Task 8 there → Task 13 here extends it)
-
-**If `flutter-domain-error-display-plan.md` has NOT yet shipped**: Implement both
-plans together, folding the `code` field into the foundational infrastructure from
-the start. The Tasks in this plan that say "extend" should be implemented as the
-original (combining both plans' requirements).
-
-**If `flutter-domain-error-display-plan.md` HAS already shipped**: Implement this
-plan's Tasks 6–9 as additive changes to the already-existing files.
-
 ### `route-domain-error-mapping-plan.md`
 
 The Go `mapRouteError()` refactor (replacing string matching with `errors.Is()`)
-is already complete per the commit history. The error formatter in Task 2 of this
+is already complete per the commit history. The error formatter in Task 3 of this
 plan depends on `goa.ServiceError.Unwrap()` returning the domain error — which
 requires the `errors.Is()` pattern to be in place. This dependency is already
 satisfied.
