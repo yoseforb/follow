@@ -120,6 +120,8 @@ services:
       - MINIO_SECRET_ACCESS_KEY=minioadmin
       - MINIO_USE_SSL=false
       - MINIO_BUCKET_NAME=follow-images
+      - REAPER_SCAN_INTERVAL=1s
+      - REAPER_STALE_THRESHOLD=2s
     ports:
       - "${API_HOST_PORT:-8080}:8080"
     networks:

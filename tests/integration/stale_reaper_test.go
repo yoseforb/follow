@@ -14,11 +14,11 @@ import (
 )
 
 // reaperStaleTimeout is the maximum time to wait for the reaper to mark a
-// stale image as failed. The API server's default reaper config uses a 30s
-// stale threshold and a 10s scan interval. The reaper must first see the
+// stale image as failed. The integration test reaper config uses a 2s
+// stale threshold and a 1s scan interval. The reaper must first see the
 // key (scan 1), then wait for the threshold to elapse before marking it
-// (scan 4+). With some margin for timing jitter we allow 60 seconds.
-const reaperStaleTimeout = 60 * time.Second
+// (scan 3+). With some margin for timing jitter we allow 15 seconds.
+const reaperStaleTimeout = 15 * time.Second
 
 // reaperPollInterval is how often we poll Valkey to check whether the
 // reaper has updated the image status hash.
@@ -222,9 +222,9 @@ func TestStaleImageReaper_DoesNotMarkTerminalImages(
 	failedKey := imageStatusKey(failedID)
 
 	// Wait long enough for the reaper to have run multiple scans.
-	// The reaper's stale threshold is 30s; waiting 50s ensures
-	// several scan cycles have passed.
-	const waitDuration = 50 * time.Second
+	// The reaper's stale threshold is 2s with a 1s scan interval;
+	// waiting 8s ensures several scan cycles have passed.
+	const waitDuration = 8 * time.Second
 	t.Logf(
 		"waiting %s to verify reaper does not touch terminal keys",
 		waitDuration,

@@ -135,6 +135,8 @@ func setupLocal() {
 	apiProcess.Env = append(
 		os.Environ(),
 		"GATEWAY_BASE_URL=http://localhost:"+gatewayPort,
+		"REAPER_SCAN_INTERVAL=1s",
+		"REAPER_STALE_THRESHOLD=2s",
 	)
 	// Setpgid places the process in its own process group. When we later
 	// signal -pgid, both the `go run` parent and the compiled server
