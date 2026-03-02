@@ -4,12 +4,14 @@ package integration_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	valkeygo "github.com/valkey-io/valkey-go"
+	"github.com/yoseforb/follow-pkg/valkey"
 )
 
 // TestValkeyFailurePropagation_InvalidImageRejectedByGateway verifies that
@@ -52,8 +54,8 @@ func TestValkeyFailurePropagation_InvalidImageRejectedByGateway(
 
 // TestValkeyFailurePropagation_FailureStreamMessage verifies that the gateway
 // publishes a failure message to the image:result stream when an invalid image
-// is uploaded. Uses a separate observer consumer group to avoid interfering
-// with the api-workers group used by follow-api.
+// is uploaded. Uses XRANGE to scan the stream idempotently so the message is
+// never missed regardless of delivery ordering.
 func TestValkeyFailurePropagation_FailureStreamMessage(t *testing.T) {
 	_, token := createAnonymousUser(t)
 	routeID := prepareRoute(t, token)
@@ -63,31 +65,11 @@ func TestValkeyFailurePropagation_FailureStreamMessage(t *testing.T) {
 	vc := newValkeyClient(t)
 	imageID := route.PresignedURLs[0].ImageID
 
-	// Use a unique observer group per test run to avoid cross-test
-	// contamination. The group name must not collide with api-workers.
-	observerGroup := "test-observers-" + imageID[:8]
-
-	// Create observer consumer group BEFORE upload so we capture all
-	// messages from the stream beginning.
-	ctx := context.Background()
-
-	_ = vc.Do(
-		ctx,
-		vc.B().XgroupCreate().
-			Key("image:result").
-			Group(observerGroup).
-			Id("0").
-			Mkstream().Build(),
-	).Error()
-
-	t.Cleanup(func() {
-		vc.Do(
-			context.Background(),
-			vc.B().XgroupDestroy().
-				Key("image:result").
-				Group(observerGroup).Build(),
-		)
-	})
+	// Capture a stream position marker before the upload so XRANGE only
+	// scans messages published after this point. Using millisecond
+	// precision with sequence 0 ensures any message published at or
+	// after this instant is included.
+	startID := fmt.Sprintf("%d-0", time.Now().UnixMilli())
 
 	// Upload invalid image bytes.
 	resp := uploadToGateway(
@@ -95,18 +77,23 @@ func TestValkeyFailurePropagation_FailureStreamMessage(t *testing.T) {
 	)
 	resp.Body.Close()
 
-	// Wait for the Valkey status hash to show failure before reading
-	// the stream, to ensure the message has been published.
-	waitForImageStatus(t, vc, imageID, "failed", 30*time.Second)
+	// Wait for the Valkey status hash to show failure before scanning
+	// the stream, so the result message is guaranteed to be present.
+	waitForImageStatus(
+		t, vc, imageID, valkey.StageFailed, 30*time.Second,
+	)
 
-	// Read from the observer group to verify a failure message exists
-	// in the image:result stream for this image.
+	// Poll the stream with XRANGE until the failure message for this
+	// image appears, or the search deadline elapses. XRANGE is
+	// idempotent — every call returns all matching messages regardless
+	// of prior reads, avoiding the one-delivery-per-consumer limitation
+	// of XREADGROUP.
 	const (
 		searchTimeout  = 15 * time.Second
 		searchInterval = 500 * time.Millisecond
-		readCount      = int64(10)
 	)
 
+	ctx := context.Background()
 	deadline := time.Now().Add(searchTimeout)
 
 	var failureMsg streamMessage
@@ -114,15 +101,28 @@ func TestValkeyFailurePropagation_FailureStreamMessage(t *testing.T) {
 	found := false
 
 	for !found && time.Now().Before(deadline) {
-		messages := xReadGroupNoAck(
-			t, vc, "image:result", observerGroup,
-			"test-observer", readCount,
-		)
+		result, err := vc.Do(
+			ctx,
+			vc.B().Xrange().
+				Key(valkey.StreamImageResult).
+				Start(startID).
+				End("+").
+				Build(),
+		).AsXRange()
+		if err != nil {
+			time.Sleep(searchInterval)
 
-		for _, msg := range messages {
-			if msg.Fields["image_id"] == imageID &&
-				msg.Fields["status"] == "failed" {
-				failureMsg = msg
+			continue
+		}
+
+		for _, entry := range result {
+			if entry.FieldValues[valkey.ResultFieldImageID] == imageID &&
+				entry.FieldValues[valkey.ResultFieldStatus] ==
+					valkey.ResultStatusFailed {
+				failureMsg = streamMessage{
+					ID:     entry.ID,
+					Fields: entry.FieldValues,
+				}
 				found = true
 
 				break
@@ -141,11 +141,16 @@ func TestValkeyFailurePropagation_FailureStreamMessage(t *testing.T) {
 		imageID,
 	)
 
-	assert.Equal(t, "failed", failureMsg.Fields["status"])
-	assert.Equal(t, imageID, failureMsg.Fields["image_id"])
+	assert.Equal(
+		t, valkey.ResultStatusFailed,
+		failureMsg.Fields[valkey.ResultFieldStatus],
+	)
+	assert.Equal(
+		t, imageID, failureMsg.Fields[valkey.ResultFieldImageID],
+	)
 	assert.NotEmpty(
 		t,
-		failureMsg.Fields["error_code"],
+		failureMsg.Fields[valkey.ResultFieldErrorCode],
 		"failure message should include error_code",
 	)
 }
