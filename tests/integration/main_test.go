@@ -77,14 +77,14 @@ func setupLocal() {
 		"VALKEY_ADDRESS",
 		"localhost:6379",
 	)
-	apiURL = envOrDefault("API_URL", "http://localhost:8080")
+	apiURL = envOrDefault("API_URL", "http://localhost:8085")
 	gatewayURL = envOrDefault(
 		"GATEWAY_URL",
-		"http://localhost:8090",
+		"http://localhost:8095",
 	)
 
-	apiPort := portFromURL(apiURL, "8080")
-	gatewayPort := portFromURL(gatewayURL, "8090")
+	apiPort := portFromURL(apiURL, "8085")
+	gatewayPort := portFromURL(gatewayURL, "8095")
 
 	projectRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
@@ -179,8 +179,8 @@ func setupDocker() {
 		"VALKEY_HOST_PORT":        "16379",
 		"MINIO_HOST_PORT":         "19000",
 		"MINIO_CONSOLE_HOST_PORT": "19001",
-		"API_HOST_PORT":           "18080",
-		"GATEWAY_HOST_PORT":       "18090",
+		"API_HOST_PORT":           "18085",
+		"GATEWAY_HOST_PORT":       "18095",
 		"POSTGRES_CONTAINER_NAME": "follow-postgres-test",
 		"VALKEY_CONTAINER_NAME":   "follow-valkey-test",
 		"MINIO_CONTAINER_NAME":    "follow-minio-test",
@@ -214,8 +214,8 @@ func setupDocker() {
 	}
 
 	valkeyAddress = "localhost:16379"
-	apiURL = "http://localhost:18080"
-	gatewayURL = "http://localhost:18090"
+	apiURL = "http://localhost:18085"
+	gatewayURL = "http://localhost:18095"
 
 	log.Info().
 		Str("api_url", apiURL).
