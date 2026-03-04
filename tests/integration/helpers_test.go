@@ -26,10 +26,11 @@ import (
 // PresignedURLEntry is a single presigned upload URL entry returned by
 // the create-waypoints endpoint.
 type PresignedURLEntry struct {
-	ImageID   string `json:"image_id"`
-	UploadURL string `json:"upload_url"`
-	Position  int    `json:"position"`
-	ExpiresAt string `json:"expires_at"`
+	ImageID     string `json:"image_id"`
+	UploadURL   string `json:"upload_url"`
+	UploadToken string `json:"upload_token"`
+	Position    int    `json:"position"`
+	ExpiresAt   string `json:"expires_at"`
 }
 
 // CreateWaypointsResponse is the typed response from POST
@@ -46,9 +47,10 @@ type CreateWaypointsResponse struct {
 // ReplaceImagePrepareResponse is the typed response from POST
 // .../replace-image/prepare.
 type ReplaceImagePrepareResponse struct {
-	ImageID   string `json:"image_id"`
-	UploadURL string `json:"upload_url"`
-	ExpiresAt string `json:"expires_at"`
+	ImageID     string `json:"image_id"`
+	UploadURL   string `json:"upload_url"`
+	UploadToken string `json:"upload_token"`
+	ExpiresAt   string `json:"expires_at"`
 }
 
 // testdataDir returns the absolute path to the testdata directory relative to
@@ -345,13 +347,15 @@ func invalidImageBytes() []byte {
 	return []byte("this is definitely not an image file %^&*!")
 }
 
-// uploadToGateway sends a PUT request with raw imageBytes to uploadURL.
+// uploadToGateway sends a PUT request with raw imageBytes to uploadURL,
+// authenticating via Authorization: Bearer header with uploadToken.
 // Content-Type is intentionally not set; the gateway derives it from JWT
 // claims. Returns the HTTP response — caller is responsible for closing
 // the body.
 func uploadToGateway(
 	t *testing.T,
 	uploadURL string,
+	uploadToken string,
 	imageBytes []byte,
 ) *http.Response {
 	t.Helper()
@@ -360,6 +364,11 @@ func uploadToGateway(
 		http.MethodPut, uploadURL, bytes.NewReader(imageBytes),
 	)
 	require.NoError(t, err)
+
+	req.Header.Set(
+		"Authorization",
+		"Bearer "+uploadToken,
+	)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 

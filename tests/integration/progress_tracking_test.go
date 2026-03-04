@@ -56,6 +56,7 @@ func TestValkeyProgressTracking_StageTransitionsOnUpload(
 	resp := uploadToGateway(
 		t,
 		route.PresignedURLs[0].UploadURL,
+		route.PresignedURLs[0].UploadToken,
 		loadTestImage(t, "pexels-punttim-240223.jpg"),
 	)
 	require.Equal(t, http.StatusAccepted, resp.StatusCode)

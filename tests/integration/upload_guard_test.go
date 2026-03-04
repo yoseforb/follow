@@ -27,7 +27,10 @@ func TestValkeyUploadGuard_PreventsDuplicateUploads(t *testing.T) {
 
 	// First upload must succeed with 202 Accepted.
 	resp1 := uploadToGateway(
-		t, uploadEntry.UploadURL, loadTestImage(t, "pexels-punttim-240223.jpg"),
+		t,
+		uploadEntry.UploadURL,
+		uploadEntry.UploadToken,
+		loadTestImage(t, "pexels-punttim-240223.jpg"),
 	)
 	require.Equal(
 		t,
@@ -52,6 +55,7 @@ func TestValkeyUploadGuard_PreventsDuplicateUploads(t *testing.T) {
 	resp2 := uploadToGateway(
 		t,
 		uploadEntry.UploadURL,
+		uploadEntry.UploadToken,
 		loadTestImage(t, "pexels-punttim-240223.jpg"),
 	)
 	require.Equal(
@@ -84,6 +88,7 @@ func TestValkeyUploadGuard_DifferentImagesAccepted(t *testing.T) {
 	resp1 := uploadToGateway(
 		t,
 		route.PresignedURLs[0].UploadURL,
+		route.PresignedURLs[0].UploadToken,
 		loadTestImage(t, "pexels-punttim-240223.jpg"),
 	)
 	require.Equal(t, http.StatusAccepted, resp1.StatusCode)
@@ -93,6 +98,7 @@ func TestValkeyUploadGuard_DifferentImagesAccepted(t *testing.T) {
 	resp2 := uploadToGateway(
 		t,
 		route.PresignedURLs[1].UploadURL,
+		route.PresignedURLs[1].UploadToken,
 		loadTestImage(t, "pexels-arthurbrognoli-2260838.jpg"),
 	)
 	require.Equal(

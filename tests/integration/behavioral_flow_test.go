@@ -246,6 +246,9 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 		assert.NotEmptyf(t, entry.UploadURL,
 			"Step 5: presigned_urls[%d].upload_url must not be empty", i,
 		)
+		assert.NotEmptyf(t, entry.UploadToken,
+			"Step 5: presigned_urls[%d].upload_token must not be empty", i,
+		)
 		assert.Truef(t, validPositions[entry.Position],
 			"Step 5: presigned_urls[%d].position=%d not in {0,1,2}",
 			i, entry.Position,
@@ -264,9 +267,9 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 	}
 
 	// ------------------------------------------------------------------ //
-	// Step 6: Upload images to gateway via presigned URLs                 //
+	// Step 6: Upload images to gateway via Authorization header           //
 	// ------------------------------------------------------------------ //
-	t.Log("Step 6: Upload images to gateway via presigned URLs")
+	t.Log("Step 6: Upload images to gateway via Authorization header")
 
 	for _, entry := range step5.PresignedURLs {
 		imgFile, hasImage := waypointImageMap[entry.Position]
@@ -287,6 +290,10 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 		)
 
 		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set(
+			"Authorization",
+			"Bearer "+entry.UploadToken,
+		)
 
 		uploadClient := &http.Client{Timeout: 60 * time.Second}
 
@@ -833,6 +840,9 @@ eventLoop:
 	require.NotEmpty(t, replacePrep.UploadURL,
 		"Step 13a: upload_url must not be empty",
 	)
+	require.NotEmpty(t, replacePrep.UploadToken,
+		"Step 13a: upload_token must not be empty",
+	)
 	assert.NotEmpty(t, replacePrep.ExpiresAt,
 		"Step 13a: expires_at must not be empty",
 	)
@@ -852,6 +862,10 @@ eventLoop:
 	)
 
 	uploadReq13b.Header.Set("Content-Type", "application/octet-stream")
+	uploadReq13b.Header.Set(
+		"Authorization",
+		"Bearer "+replacePrep.UploadToken,
+	)
 
 	client13b := &http.Client{Timeout: 60 * time.Second}
 

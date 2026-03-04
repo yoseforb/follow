@@ -33,7 +33,10 @@ func TestValkeyFailurePropagation_InvalidImageRejectedByGateway(
 	// (400/415). Both are valid — we care about the eventual Valkey
 	// status, not the HTTP response code.
 	resp := uploadToGateway(
-		t, route.PresignedURLs[0].UploadURL, invalidImageBytes(),
+		t,
+		route.PresignedURLs[0].UploadURL,
+		route.PresignedURLs[0].UploadToken,
+		invalidImageBytes(),
 	)
 	resp.Body.Close()
 
@@ -73,7 +76,10 @@ func TestValkeyFailurePropagation_FailureStreamMessage(t *testing.T) {
 
 	// Upload invalid image bytes.
 	resp := uploadToGateway(
-		t, route.PresignedURLs[0].UploadURL, invalidImageBytes(),
+		t,
+		route.PresignedURLs[0].UploadURL,
+		route.PresignedURLs[0].UploadToken,
+		invalidImageBytes(),
 	)
 	resp.Body.Close()
 
