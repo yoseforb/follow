@@ -134,7 +134,7 @@ BEFORE (vulnerable):
   Client --[confirm request]----> follow-api --[StatObject]--> MinIO (TOCTOU gap)
 
 AFTER (secure):
-  Client --[PUT /upload?token=JWT]--> follow-image-gateway
+  Client --[PUT /upload, Authorization: Bearer JWT]--> follow-image-gateway
   follow-image-gateway: validate --> decode --> process --> encode --> upload
   follow-image-gateway --[Redis Stream]--> follow-api --[update DB]--> PostgreSQL
 ```
@@ -175,9 +175,9 @@ graph TB
     end
 
     FC -->|"1. HTTPS REST + SSE"| FA
-    FC -->|"2. PUT /upload?token=JWT"| IG
+    FC -->|"2. PUT /upload (Auth: Bearer JWT)"| IG
 
-    FA -->|"3. Ed25519-signed JWT<br/>(via upload URL, relayed by client)"| IG
+    FA -->|"3. Ed25519-signed JWT<br/>(via Authorization header, relayed by client)"| IG
 
     FA <-->|"4. Write image:status (queued)<br/>Consume from image:result"| RD
     IG <-->|"5. SET NX image:upload:{id}<br/>Publish to image:result<br/>Update image:status:{id}"| RD
@@ -273,12 +273,13 @@ Client: POST /routes/{id}/create-waypoints
       - content_type
       - max_size
       - expiry (15 minutes)
-6.  Build upload URLs:
-      https://img-gw.example.com/upload?token=<Ed25519-JWT>
+6.  Build upload URLs and tokens:
+      upload_url: https://img-gw.example.com/upload
+      upload_token: <Ed25519-JWT> (sent separately for Authorization header)
 7.  Set initial status in Valkey Hash "image:status:{image_id}":
       {stage: "queued", progress: 0}
 8.  Transition Route to PENDING status
-9.  Return upload URLs to client (replaces presigned MinIO URLs)
+9.  Return upload URLs + tokens to client (replaces presigned MinIO URLs)
 ```
 
 **Response shape** (replaces current `CreateRouteWithWaypointsResult`):
@@ -291,7 +292,8 @@ Client: POST /routes/{id}/create-waypoints
   "upload_urls": [
     {
       "image_id": "uuid",
-      "upload_url": "https://img-gw.example.com/upload?token=eyJ...",
+      "upload_url": "https://img-gw.example.com/upload",
+      "upload_token": "eyJ...",
       "position": 0,
       "expires_at": "2026-01-29T10:15:00Z"
     }
@@ -308,7 +310,8 @@ Client: Opens SSE connection to follow-api:
   GET /images/status/stream?image_ids=id1,id2,id3
 
 Client: For each image, sends:
-  PUT https://img-gw.example.com/upload?token=<JWT>
+  PUT https://img-gw.example.com/upload
+  Authorization: Bearer <JWT>
   Content-Type: application/octet-stream
   Body: <raw image bytes>
 ```
@@ -316,7 +319,7 @@ Client: For each image, sends:
 **image-gateway processing:**
 
 ```
-1. Extract JWT from query parameter
+1. Extract JWT from Authorization: Bearer header
 2. Validate JWT signature using follow-api's Ed25519 public key
 3. Extract claims: image_id, storage_key, content_type, max_size, expiry
 4. Validate token not expired
@@ -535,7 +538,7 @@ sequenceDiagram
     Note over C,API: SSE connection held open
 
     loop For each image
-        C->>GW: PUT /upload?token=JWT (raw bytes)
+        C->>GW: PUT /upload (Auth: Bearer JWT, raw bytes)
         GW->>GW: Validate JWT (Ed25519 public key)
         GW-->>C: 202 Accepted {image_id, status: processing}
 
@@ -584,7 +587,7 @@ sequenceDiagram
 **Purpose:** One-time upload guard. Prevents duplicate uploads of the same image.
 
 **Flow:**
-1. Gateway receives `PUT /upload?token=JWT`
+1. Gateway receives `PUT /upload` with `Authorization: Bearer JWT`
 2. Gateway executes `SET image:upload:{image_id} NX EX 3600`
 3. If SET succeeds → proceed with processing
 4. If SET fails (key exists) → return `409 Conflict` to client
