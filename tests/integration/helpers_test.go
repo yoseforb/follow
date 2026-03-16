@@ -242,6 +242,37 @@ func deleteRoute(t *testing.T, routeID, authToken string) {
 	}
 }
 
+// deleteUser calls DELETE /api/v1/users/anonymous/{userID}.
+// Best-effort — does not call t.Fatal on failure, only t.Log.
+func deleteUser(
+	t *testing.T,
+	userID, authToken string,
+) {
+	t.Helper()
+
+	if userID == "" {
+		return
+	}
+
+	resp := doRequest(
+		t,
+		http.MethodDelete,
+		apiURL+"/api/v1/users/anonymous/"+userID,
+		nil,
+		authToken,
+	)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK &&
+		resp.StatusCode != http.StatusNotFound {
+		t.Logf(
+			"deleteUser: cleanup DELETE /api/v1/users/anonymous/%s returned %d",
+			userID,
+			resp.StatusCode,
+		)
+	}
+}
+
 // SSEEvent represents a parsed Server-Sent Event.
 type SSEEvent struct {
 	Type string

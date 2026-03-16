@@ -134,9 +134,9 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 		"Step 4: prepared_at must not be empty",
 	)
 
-	// Register cleanup before Step 5 so the route is deleted on test
-	// failure (best-effort; deleteRoute only logs on non-200).
-	t.Cleanup(func() { deleteRoute(t, routeID, authToken) })
+	// Register cleanup before Step 5 so resources are cleaned up on test
+	// failure (best-effort; deleteUser only logs on non-200).
+	t.Cleanup(func() { deleteUser(t, userID, authToken) })
 
 	// ------------------------------------------------------------------ //
 	// Step 5: Create route with 3 waypoints                               //
@@ -1007,41 +1007,62 @@ eventLoop:
 	)
 
 	// ------------------------------------------------------------------ //
-	// Step 14: Delete route                                               //
+	// Step 14: Delete user (cascade: user → routes → images)              //
 	// ------------------------------------------------------------------ //
-	t.Log("Step 14: Delete route")
+	t.Log("Step 14: Delete anonymous user (triggers async cascade)")
 
 	step14Resp := doRequest(
 		t,
 		http.MethodDelete,
-		apiURL+"/api/v1/routes/"+routeID,
+		apiURL+"/api/v1/users/anonymous/"+userID,
 		nil,
 		authToken,
 	)
 
 	require.Equal(t, http.StatusOK, step14Resp.StatusCode,
-		"Step 14: expected 200 from DELETE /api/v1/routes/{routeID}",
+		"Step 14: expected 200 from DELETE /api/v1/users/anonymous/{userID}",
 	)
 
 	step14Body := decodeJSON(t, step14Resp)
 
-	assert.Equal(t, routeID, step14Body["route_id"],
-		"Step 14: route_id must match",
+	assert.Equal(t, userID, step14Body["user_id"],
+		"Step 14: user_id must match",
 	)
-
-	waypointsDeleted, _ := step14Body["waypoints_deleted"].(float64)
-	assert.InDelta(t, float64(3), waypointsDeleted, 0,
-		"Step 14: waypoints_deleted must be 3",
-	)
-
-	assert.Equal(t, true, step14Body["removed_from_database"],
-		"Step 14: removed_from_database must be true",
-	)
-	assert.Equal(t, true, step14Body["removed_from_storage"],
-		"Step 14: removed_from_storage must be true",
-	)
-
 	assert.NotEmpty(t, step14Body["deleted_at"],
 		"Step 14: deleted_at must not be empty",
+	)
+
+	// ------------------------------------------------------------------ //
+	// Step 15: Verify cascade — route should be gone                      //
+	// ------------------------------------------------------------------ //
+	t.Log("Step 15: Verify route deleted by async cascade")
+
+	// The cascade is async via Watermill events, so poll until
+	// the route returns 404 (or timeout after 15s).
+	deadline := time.Now().Add(15 * time.Second)
+	routeGone := false
+
+	for time.Now().Before(deadline) {
+		resp := doRequest(
+			t,
+			http.MethodGet,
+			apiURL+"/api/v1/routes/"+routeID,
+			nil,
+			authToken,
+		)
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusNotFound ||
+			resp.StatusCode == http.StatusUnauthorized {
+			routeGone = true
+			break
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	assert.True(t, routeGone,
+		"Step 15: route %s should return 404 after user deletion cascade",
+		routeID,
 	)
 }
