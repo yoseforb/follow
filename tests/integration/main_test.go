@@ -95,6 +95,7 @@ func setupLocal() {
 	gatewayDir := filepath.Join(projectRoot, "follow-image-gateway")
 
 	waitForValkey(valkeyAddress)
+	cleanValkeyStreams(valkeyAddress)
 
 	log.Info().
 		Str("dir", gatewayDir).
@@ -389,6 +390,41 @@ func waitForValkey(addr string) {
 	}
 	log.Error().Str("addr", addr).Msg("valkey not reachable after 30s")
 	os.Exit(1)
+}
+
+// cleanValkeyStreams deletes the image:result stream (and its
+// consumer group) so the API consumer starts with a fresh group
+// on each test run. Without this, stale consumer group state
+// from a previous run can cause the consumer to skip messages
+// whose IDs fall below the group's last-delivered watermark.
+func cleanValkeyStreams(addr string) {
+	cfg := valkeygo.ClientOption{
+		InitAddress:  []string{addr},
+		DisableCache: true,
+	}
+	client, err := valkeygo.NewClient(cfg)
+	if err != nil {
+		log.Warn().Err(err).
+			Msg("failed to connect to valkey for stream cleanup")
+		return
+	}
+	defer client.Close()
+
+	ctx := context.Background()
+	streams := []string{"image:result", "image:result:dlq"}
+	for _, key := range streams {
+		err = client.Do(
+			ctx,
+			client.B().Del().Key(key).Build(),
+		).Error()
+		if err != nil {
+			log.Warn().Err(err).Str("key", key).
+				Msg("failed to delete valkey stream")
+		} else {
+			log.Info().Str("key", key).
+				Msg("deleted valkey stream for clean test run")
+		}
+	}
 }
 
 func envOrDefault(key, defaultVal string) string {
