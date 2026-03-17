@@ -144,7 +144,10 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 	t.Log("Step 5: Create route with 3 waypoints")
 
 	createBody := map[string]any{
-		"name":           "Test Integration Route",
+		"address":        "456 Behavioral Test Ave, Test City",
+		"start_point":    "Parking lot B, entrance gate",
+		"end_point":      "Office building, 3rd floor lobby",
+		"location_name":  "Behavioral Test Location",
 		"description":    "Created by TestFullAPIBehavioralFlow",
 		"visibility":     "private",
 		"access_method":  "open",
@@ -697,8 +700,11 @@ eventLoop:
 		http.MethodPut,
 		apiURL+"/api/v1/routes/"+routeID,
 		map[string]any{
-			"name":       "Updated Integration Route",
-			"visibility": "public",
+			"address":       "789 Updated Test Blvd, New City",
+			"location_name": "Updated Test Location",
+			"start_point":   "New parking entrance",
+			"end_point":     "Updated destination, top floor",
+			"visibility":    "public",
 		},
 		authToken,
 	)
@@ -726,8 +732,17 @@ eventLoop:
 		}
 	}
 
-	assert.True(t, updatedFields11MetaSet["name"],
-		"Step 11: updated_fields must contain 'name'",
+	assert.True(t, updatedFields11MetaSet["address"],
+		"Step 11: updated_fields must contain 'address'",
+	)
+	assert.True(t, updatedFields11MetaSet["location_name"],
+		"Step 11: updated_fields must contain 'location_name'",
+	)
+	assert.True(t, updatedFields11MetaSet["start_point"],
+		"Step 11: updated_fields must contain 'start_point'",
+	)
+	assert.True(t, updatedFields11MetaSet["end_point"],
+		"Step 11: updated_fields must contain 'end_point'",
 	)
 	assert.True(t, updatedFields11MetaSet["visibility"],
 		"Step 11: updated_fields must contain 'visibility'",

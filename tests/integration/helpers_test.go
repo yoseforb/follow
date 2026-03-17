@@ -492,7 +492,10 @@ func createRouteWithWaypoints(
 
 	body := map[string]any{
 		"route_id":       routeID,
-		"name":           "Integration Test Route",
+		"address":        "123 Integration Test Street, Test City",
+		"start_point":    "Main entrance, ground floor",
+		"end_point":      "Test destination, 2nd floor",
+		"location_name":  "Integration Test Location",
 		"description":    "Created by integration test",
 		"visibility":     "private",
 		"access_method":  "open",
