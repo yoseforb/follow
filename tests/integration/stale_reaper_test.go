@@ -83,17 +83,15 @@ func cleanupImageStatusKey(t *testing.T, imageID string) {
 
 // TestStaleImageReaper_MarksFailedAfterThreshold verifies that the
 // stale image reaper (running inside follow-api) detects an image
-// status hash stuck in a non-terminal stage and marks it as failed
-// with the expected error message.
+// status hash stuck in a non-terminal stage, publishes a failure
+// message to the result stream, and deletes the status key.
 //
 // The test writes a hash with stage=validating directly to Valkey
 // (simulating a gateway crash mid-processing) and then waits for
-// the reaper to transition the stage to "failed".
+// the reaper to delete the key.
 func TestStaleImageReaper_MarksFailedAfterThreshold(
 	t *testing.T,
 ) {
-	testStart := time.Now().UTC()
-
 	imageID := uuid.NewString()
 	t.Cleanup(func() { cleanupImageStatusKey(t, imageID) })
 
@@ -103,56 +101,38 @@ func TestStaleImageReaper_MarksFailedAfterThreshold(
 	vc := newValkeyClient(t)
 	key := imageStatusKey(imageID)
 
-	// Poll until the reaper marks it as failed or timeout.
+	// Poll until the reaper deletes the key or timeout.
 	deadline := time.Now().Add(reaperStaleTimeout)
-	var finalFields map[string]string
+	keyDeleted := false
 
 	for time.Now().Before(deadline) {
-		finalFields = hGetAll(t, vc, key)
-		if finalFields[valkey.FieldStage] == valkey.StageFailed {
+		fields := hGetAll(t, vc, key)
+		if len(fields) == 0 {
+			keyDeleted = true
+
 			break
 		}
 
 		time.Sleep(reaperPollInterval)
 	}
 
-	require.Equal(t, valkey.StageFailed, finalFields[valkey.FieldStage],
-		"reaper should mark stale image as failed within %s",
+	require.True(t, keyDeleted,
+		"reaper should delete the stale image status key within %s",
 		reaperStaleTimeout,
-	)
-
-	assert.Equal(t,
-		valkey.ErrorProcessingTimeout,
-		finalFields[valkey.FieldError],
-		"reaper should set error to 'image processing timed out'",
-	)
-
-	updatedAtStr := finalFields[valkey.FieldUpdatedAt]
-	require.NotEmpty(t, updatedAtStr,
-		"reaper should set updated_at when marking as failed",
-	)
-
-	updatedAt, err := time.Parse(time.RFC3339, updatedAtStr)
-	require.NoError(t, err, "updated_at should be valid RFC3339")
-	assert.True(t, updatedAt.After(testStart),
-		"updated_at (%s) should be after test start (%s)",
-		updatedAt, testStart,
 	)
 }
 
 // TestStaleImageReaper_MarksNonValidatingStageAsFailed verifies that
 // the reaper handles non-terminal stages other than "validating". The
-// reaper must mark ANY non-terminal stage as failed, not just the
-// first stage of the pipeline.
+// reaper must act on ANY non-terminal stage, not just the first stage
+// of the pipeline.
 //
 // The test writes a hash with stage=processing (simulating a crash
-// during the processing stage) and verifies the reaper transitions
-// it to "failed" with the expected error message.
+// during the processing stage) and verifies the reaper deletes the
+// key after publishing a failure message.
 func TestStaleImageReaper_MarksNonValidatingStageAsFailed(
 	t *testing.T,
 ) {
-	testStart := time.Now().UTC()
-
 	imageID := uuid.NewString()
 	t.Cleanup(func() { cleanupImageStatusKey(t, imageID) })
 
@@ -163,40 +143,24 @@ func TestStaleImageReaper_MarksNonValidatingStageAsFailed(
 	vc := newValkeyClient(t)
 	key := imageStatusKey(imageID)
 
-	// Poll until the reaper marks it as failed or timeout.
+	// Poll until the reaper deletes the key or timeout.
 	deadline := time.Now().Add(reaperStaleTimeout)
-	var finalFields map[string]string
+	keyDeleted := false
 
 	for time.Now().Before(deadline) {
-		finalFields = hGetAll(t, vc, key)
-		if finalFields[valkey.FieldStage] == valkey.StageFailed {
+		fields := hGetAll(t, vc, key)
+		if len(fields) == 0 {
+			keyDeleted = true
+
 			break
 		}
 
 		time.Sleep(reaperPollInterval)
 	}
 
-	require.Equal(t, valkey.StageFailed, finalFields[valkey.FieldStage],
-		"reaper should mark stale processing-stage image as failed within %s",
+	require.True(t, keyDeleted,
+		"reaper should delete the stale image status key within %s",
 		reaperStaleTimeout,
-	)
-
-	assert.Equal(t,
-		valkey.ErrorProcessingTimeout,
-		finalFields[valkey.FieldError],
-		"reaper should set error to 'image processing timed out'",
-	)
-
-	updatedAtStr := finalFields[valkey.FieldUpdatedAt]
-	require.NotEmpty(t, updatedAtStr,
-		"reaper should set updated_at when marking as failed",
-	)
-
-	updatedAt, err := time.Parse(time.RFC3339, updatedAtStr)
-	require.NoError(t, err, "updated_at should be valid RFC3339")
-	assert.True(t, updatedAt.After(testStart),
-		"updated_at (%s) should be after test start (%s)",
-		updatedAt, testStart,
 	)
 }
 
@@ -249,8 +213,8 @@ func TestStaleImageReaper_DoesNotMarkTerminalImages(
 }
 
 // TestStaleImageReaper_MarksMultipleStaleImages verifies that the
-// reaper handles multiple stale images in a single pass, marking
-// all of them as failed.
+// reaper handles multiple stale images in a single pass, publishing
+// failure messages and deleting all their status keys.
 func TestStaleImageReaper_MarksMultipleStaleImages(
 	t *testing.T,
 ) {
@@ -274,23 +238,23 @@ func TestStaleImageReaper_MarksMultipleStaleImages(
 
 	vc := newValkeyClient(t)
 
-	// Poll until all images are marked failed or timeout.
+	// Poll until all keys are deleted by the reaper or timeout.
 	deadline := time.Now().Add(reaperStaleTimeout)
 
-	allFailed := false
+	allDeleted := false
 
 	for time.Now().Before(deadline) {
 		count := 0
 
 		for _, id := range imageIDs {
 			fields := hGetAll(t, vc, imageStatusKey(id))
-			if fields[valkey.FieldStage] == valkey.StageFailed {
+			if len(fields) == 0 {
 				count++
 			}
 		}
 
 		if count == imageCount {
-			allFailed = true
+			allDeleted = true
 
 			break
 		}
@@ -298,22 +262,8 @@ func TestStaleImageReaper_MarksMultipleStaleImages(
 		time.Sleep(reaperPollInterval)
 	}
 
-	require.True(t, allFailed,
-		"reaper should mark all %d stale images as failed within %s",
+	require.True(t, allDeleted,
+		"reaper should delete all %d stale image status keys within %s",
 		imageCount, reaperStaleTimeout,
 	)
-
-	// Verify error message on each.
-	for _, id := range imageIDs {
-		fields := hGetAll(t, vc, imageStatusKey(id))
-		assert.Equal(t, valkey.StageFailed, fields[valkey.FieldStage],
-			"image %s stage must be failed", id,
-		)
-		assert.Equal(t,
-			valkey.ErrorProcessingTimeout,
-			fields[valkey.FieldError],
-			"image %s error must be 'image processing timed out'",
-			id,
-		)
-	}
 }
