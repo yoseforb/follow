@@ -10,17 +10,18 @@ read this document end-to-end and understand how every piece fits together.
 
 1. [System Overview](#1-system-overview)
 2. [Service Map](#2-service-map)
-3. [follow-api Architecture](#3-follow-api-architecture)
-4. [follow-image-gateway Architecture](#4-follow-image-gateway-architecture)
-5. [follow-pkg Shared Contracts](#5-follow-pkg-shared-contracts)
-6. [Inter-Service Communication](#6-inter-service-communication)
-7. [Entity Lifecycle & Aggregates](#7-entity-lifecycle--aggregates)
-8. [Data Flows](#8-data-flows)
-9. [Event Bus & Cascade Patterns](#9-event-bus--cascade-patterns)
-10. [Background Systems](#10-background-systems)
-11. [SSE Real-Time Streaming](#11-sse-real-time-streaming)
-12. [Error Handling Patterns](#12-error-handling-patterns)
-13. [Timing Reference](#13-timing-reference)
+3. [API Endpoints](#3-api-endpoints)
+4. [follow-api Architecture](#4-follow-api-architecture)
+5. [follow-image-gateway Architecture](#5-follow-image-gateway-architecture)
+6. [follow-pkg Shared Contracts](#6-follow-pkg-shared-contracts)
+7. [Inter-Service Communication](#7-inter-service-communication)
+8. [Entity Lifecycle & Aggregates](#8-entity-lifecycle--aggregates)
+9. [Data Flows](#9-data-flows)
+10. [Event Bus & Cascade Patterns](#10-event-bus--cascade-patterns)
+11. [Background Systems](#11-background-systems)
+12. [SSE Real-Time Streaming](#12-sse-real-time-streaming)
+13. [Error Handling Patterns](#13-error-handling-patterns)
+14. [Timing Reference](#14-timing-reference)
 
 ---
 
@@ -108,9 +109,137 @@ Imported by both Go services. Contains:
 
 ---
 
-## 3. follow-api Architecture
+## 3. API Endpoints
 
-### 3.1 Module System
+### 3.1 follow-api (port 8080)
+
+All API endpoints (except health) require JWT authentication via `Authorization: Bearer <token>` header.
+
+#### Authentication Service
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/auth/refresh` | JWT | Refresh JWT token. Generates a new access token with the same user information. |
+
+**Responses**: 200 (new token), 401 (unauthorized)
+
+#### User Service
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/users/anonymous` | None | Create a new anonymous user. Returns user_id + JWT token. |
+| `GET` | `/api/v1/users/anonymous/{user_id}` | JWT | Get anonymous user details by ID. |
+| `DELETE` | `/api/v1/users/anonymous/{user_id}` | JWT | Delete an anonymous user. User can only delete their own account. Triggers async cascade (routes → images → storage cleanup). |
+
+**Responses**: 200 (success), 400 (invalid input), 401 (unauthorized), 403 (forbidden), 404 (not found), 500 (creation failed)
+
+#### Admin Service (development only)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/users/admin/stats` | JWT | Get user statistics and metrics. |
+| `GET` | `/api/v1/users/admin/anonymous` | JWT | List anonymous users with pagination. Query params: `limit`, `offset`, `created_after`. |
+
+**Responses**: 200 (success), 401 (unauthorized), 403 (forbidden), 500 (internal error)
+
+#### Route Service — Lifecycle
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/routes/prepare` | JWT | Prepare route creation. Validates user, checks pending route limit, allocates route UUID. Returns `route_id`. |
+| `POST` | `/api/v1/routes/{route_id}/create-waypoints` | JWT | Create route with waypoints in PENDING state. Creates image entities, signs Ed25519 upload tokens, sets initial Valkey status. Returns `waypoint_ids[]` + `presigned_urls[]` (each with `upload_url` + `upload_token`). |
+| `POST` | `/api/v1/routes/{route_id}/publish` | JWT | Publish route (READY → PUBLISHED). Route must have completed all image processing. Makes route navigable. |
+| `GET` | `/api/v1/routes/{route_id}` | JWT | Get route details. Query params: `include_images` (boolean, adds presigned download URLs), `password` (for password-protected routes). |
+| `PUT` | `/api/v1/routes/{route_id}` | JWT | Update route metadata (location name, description, visibility, access method). |
+| `DELETE` | `/api/v1/routes/{route_id}` | JWT | Delete route with ownership validation. Triggers async cascade (images → storage cleanup). |
+| `GET` | `/api/v1/routes` | JWT | List routes with filtering and pagination. Query params: `discovery_mode` (false=own routes, true=others' public routes), `visibility`, `access_method`, `route_status` (default: published), `location_name`, `address`, `description`, `start_point`, `end_point`, `navigable_only`, `page`, `page_size`. |
+
+**Responses**: 200 (success), 400 (validation failed), 401 (unauthorized), 403 (not owner / limit exceeded), 404 (not found), 422 (invalid route state), 500 (storage error)
+
+#### Route Service — Waypoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `PUT` | `/api/v1/routes/{route_id}/waypoints/{waypoint_id}` | JWT | Update waypoint properties (description, marker coordinates, marker type). |
+
+**Responses**: 200 (success), 400 (validation failed), 401 (unauthorized), 403 (limit exceeded), 404 (not found), 422 (invalid route state), 500 (storage error)
+
+#### Route Service — Image Management
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/api/v1/routes/{route_id}/waypoints/{waypoint_id}/replace-image/prepare` | JWT | Prepare waypoint image replacement. Validates ownership, creates new image entity, returns `image_id` + `upload_url` + `upload_token` + `expires_at`. Route stays PUBLISHED during replacement. |
+| `POST` | `/api/v1/routes/{route_id}/waypoints/{waypoint_id}/retry-upload` | JWT | Retry upload for a failed waypoint image. Clears failed state, returns fresh upload URL. |
+| `GET` | `/api/v1/routes/{route_id}/images/{image_id}/status` | JWT | Get processing status for a single image within a route. Caller must own the route. |
+
+**Responses**: 200 (success), 400 (validation failed), 401 (unauthorized), 403 (not owner / limit exceeded), 404 (not found), 422 (invalid route state), 500 (storage error)
+
+#### Route Service — Real-Time Streaming
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/v1/routes/{route_id}/status/stream` | JWT | SSE stream of real-time image processing status. Polls Valkey every 500ms, emits `processing`, `ready`, `failed`, and `complete` events. Max duration: 5 minutes. Heartbeat every 30s. |
+
+**Event format** (Server-Sent Events):
+```
+event: ready
+data: {"event_type":"ready","image_id":"<uuid>","status":"ready","timestamp":"2026-03-18T21:26:43Z"}
+```
+
+**Responses**: 101 (SSE stream), 401 (unauthorized), 403 (not owner), 404 (not found), 422 (invalid state), 500 (error)
+
+#### Health Service
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | None | General health check. Returns server status. |
+| `GET` | `/health/db` | None | Database connectivity check. Pings PostgreSQL, verifies schemas. |
+| `GET` | `/health/storage` | None | Storage system check. Verifies MinIO bucket accessibility. |
+
+**Responses**: 200 (healthy), 503 (service unavailable)
+
+---
+
+### 3.2 follow-image-gateway (port 8090)
+
+#### Upload Service
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `PUT` | `/api/v1/upload` | Ed25519 JWT | Upload an image for processing. Accepts raw binary image data. JWT claims specify `image_id`, `storage_key`, `max_file_size`, `content_type`. Image is validated, analyzed (ML detection), transformed (resize + WebP), and uploaded to MinIO. Returns immediately with 202 — processing is asynchronous. |
+
+**Request**:
+```
+PUT /api/v1/upload
+Authorization: Bearer <Ed25519 JWT signed by follow-api>
+Content-Type: application/octet-stream
+Body: raw image bytes
+```
+
+**Responses**:
+| Status | Error Name | Description |
+|--------|-----------|-------------|
+| 202 | — | Accepted. Image received, processing started asynchronously. |
+| 400 | `bad_request` | Malformed request or missing required parameters. |
+| 401 | `unauthorized` | Upload token is invalid or expired. |
+| 409 | `conflict` | Upload already in progress for this image (duplicate guard). |
+| 413 | `payload_too_large` | File exceeds maximum allowed size (min of 10MB global, token claim). |
+| 503 | `service_unavailable` | Pipeline unavailable or submission timeout (30s). |
+
+#### Health Service
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | None | General health check. Verifies Redis, MinIO, and Valkey connectivity. |
+| `GET` | `/health/ready` | None | Readiness check. Same checks as general health — indicates service can accept uploads. |
+
+**Responses**: 200 (healthy), 503 (service unavailable)
+
+---
+
+## 4. follow-api Architecture
+
+### 4.1 Module System
 
 The API server uses a modular-monolithic design with three domain modules:
 
@@ -139,7 +268,7 @@ internal/
     server/            ← Goa HTTP server, middleware
 ```
 
-### 3.2 Startup Sequence
+### 4.2 Startup Sequence
 
 The server boots in a strict dependency order. Each step must succeed before the
 next begins:
