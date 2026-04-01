@@ -136,6 +136,7 @@ func setupLocal() {
 	apiProcess.Env = append(
 		os.Environ(),
 		"GATEWAY_BASE_URL=http://localhost:"+gatewayPort,
+		"RATE_LIMIT_ENABLED=false",
 		"REAPER_SCAN_INTERVAL=1s",
 		"REAPER_STALE_THRESHOLD=2s",
 		"RECLAIMER_IDLE_TIMEOUT=5s",
