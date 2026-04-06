@@ -24,9 +24,9 @@ services:
     container_name: ${POSTGRES_CONTAINER_NAME:-follow-postgres}
     restart: unless-stopped
     environment:
-      POSTGRES_DB: follow
-      POSTGRES_USER: follow
-      POSTGRES_PASSWORD: follow
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -34,7 +34,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U follow -d follow"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -98,9 +98,12 @@ services:
   # ── Application Services ───────────────────────────────────────────
 
   follow-api:
+    image: follow-api:latest
     build:
       context: ./follow-api
       dockerfile: Dockerfile
+      additional_contexts:
+        follow-pkg: ./follow-pkg
     container_name: ${API_CONTAINER_NAME:-follow-api}
     restart: unless-stopped
     depends_on:
@@ -113,24 +116,31 @@ services:
     environment:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
-      - DATABASE_URL=postgres://follow:follow@postgres:5432/follow?sslmode=disable
+      - POSTGRESQL_URI=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=${POSTGRES_SSLMODE}
       - VALKEY_ADDRESS=valkey:6379
       - MINIO_ENDPOINT=minio:9000
+      - MINIO_EXTERNAL_ENDPOINT=${HOST_IP:-localhost}:${MINIO_HOST_PORT:-9000}
       - MINIO_ACCESS_KEY_ID=minioadmin
       - MINIO_SECRET_ACCESS_KEY=minioadmin
       - MINIO_USE_SSL=false
       - MINIO_BUCKET_NAME=follow-images
       - REAPER_SCAN_INTERVAL=1s
       - REAPER_STALE_THRESHOLD=2s
+      - JWT_SECRET=${JWT_SECRET}
+      - FOLLOW_API_ED25519_PRIVATE_KEY=${FOLLOW_API_ED25519_PRIVATE_KEY}
+      - GATEWAY_BASE_URL=http://${HOST_IP:-localhost}:${GATEWAY_HOST_PORT:-8090}
     ports:
       - "${API_HOST_PORT:-8080}:8080"
     networks:
       - internal
 
   follow-image-gateway:
+    image: follow-image-gateway:latest
     build:
       context: ./follow-image-gateway
       dockerfile: Dockerfile
+      additional_contexts:
+        follow-pkg: ./follow-pkg
     container_name: ${GATEWAY_CONTAINER_NAME:-follow-image-gateway}
     restart: unless-stopped
     depends_on:
@@ -143,12 +153,13 @@ services:
     environment:
       - GATEWAY_SERVER_HOST=0.0.0.0
       - GATEWAY_SERVER_PORT=8090
-      - VALKEY_ADDRESS=valkey:6379
+      - IMG_GW_VALKEY_ADDRESSES=valkey:6379
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY_ID=minioadmin
       - MINIO_SECRET_ACCESS_KEY=minioadmin
       - MINIO_USE_SSL=false
       - MINIO_BUCKET_NAME=follow-images
+      - FOLLOW_API_ED25519_PUBLIC_KEY=${FOLLOW_API_ED25519_PUBLIC_KEY}
     ports:
       - "${GATEWAY_HOST_PORT:-8090}:8090"
     networks:
