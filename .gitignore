@@ -6,6 +6,9 @@ follow-pkg/
 follow-business/
 follow-app-worktrees/
 
+# Environment (sensitive values)
+.env
+
 # OS
 .DS_Store
 
