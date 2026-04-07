@@ -28,7 +28,10 @@ but the following must already be up (typically via systemd or the root
 - Docker Engine and Docker Compose plugin installed and running
 - The root `docker-compose.yml` is used; all services are started and stopped
   by the test suite automatically
-- No manual infrastructure setup is required
+- `tests/integration/.env` provides the full configuration (ports, container
+  names, network name, host IP, credentials, test Ed25519 keypair). This file
+  is **committed** because it contains dummy values only. CI gets it for free
+  on checkout; no manual infrastructure or secret setup is required.
 
 ---
 
@@ -56,27 +59,50 @@ go test -tags=integration -v -count=1 ./...
 
 ### Docker mode (CI/CD)
 
-The test suite starts the full stack via Docker Compose, runs all tests, and
-tears everything down (including volumes) when done.
+The test suite loads `tests/integration/.env`, starts the full stack via
+Docker Compose with those values, runs all tests, and tears everything down
+(including volumes) when done.
 
 ```bash
 cd tests/integration
 INTEGRATION_TEST_MODE=docker go test -tags=integration -v -count=1 ./...
 ```
 
+All configuration — ports, container names, network name, host IP,
+credentials, Ed25519 keypair — comes from `tests/integration/.env`. To
+change something (e.g. shift test ports off the defaults), edit that file.
+No code changes and no command-line overrides are needed.
+
 ---
 
 ## Environment Variables
 
-These variables control the test suite itself. Service-internal configuration
-(database URL, MinIO credentials, etc.) is handled by the compose file.
+### Local mode
 
-| Variable               | Default               | Description                                  |
-|------------------------|-----------------------|----------------------------------------------|
-| `INTEGRATION_TEST_MODE`| `local`               | `local` or `docker`                          |
-| `API_URL`              | `http://localhost:8080` | Base URL for `follow-api` (local mode only) |
-| `GATEWAY_URL`          | `http://localhost:8090` | Base URL for `follow-image-gateway` (local) |
-| `VALKEY_ADDRESS`       | `localhost:6379`      | Valkey address (local mode only)             |
+These variables control where the test suite looks for the services that
+`TestMain` launches as subprocesses:
+
+| Variable               | Default                 | Description                           |
+|------------------------|-------------------------|---------------------------------------|
+| `INTEGRATION_TEST_MODE`| `local`                 | `local` or `docker`                   |
+| `API_URL`              | `http://localhost:8085` | Base URL for `follow-api`             |
+| `GATEWAY_URL`          | `http://localhost:8095` | Base URL for `follow-image-gateway`   |
+| `VALKEY_ADDRESS`       | `localhost:6379`        | Valkey address                        |
+
+### Docker mode
+
+All configuration comes from `tests/integration/.env`. Relevant keys:
+
+| Key                                       | Purpose                                          |
+|-------------------------------------------|--------------------------------------------------|
+| `POSTGRES_HOST_PORT` / `VALKEY_HOST_PORT` | Host ports exposed by compose (offset from dev)  |
+| `MINIO_HOST_PORT` / `MINIO_CONSOLE_HOST_PORT` | MinIO host ports                             |
+| `API_HOST_PORT` / `GATEWAY_HOST_PORT`     | App service host ports                           |
+| `*_CONTAINER_NAME`                        | `*-test` suffixed names — avoid dev-stack clash  |
+| `NETWORK_NAME`                            | Test-only compose network name                   |
+| `HOST_IP`                                 | Forced to `localhost` so presigned URLs resolve  |
+| `POSTGRES_*` / `MINIO_*` / `JWT_SECRET`   | Test-only credentials (safe to commit)           |
+| `FOLLOW_API_ED25519_{PRIVATE,PUBLIC}_KEY` | Test-only Ed25519 keypair (raw 32-byte seed b64) |
 
 ---
 
@@ -94,18 +120,27 @@ Test cases will be listed here as they are added.
 
 ### Port conflicts (local mode)
 
-If the default ports (8080, 8090, 6379, 5432, 9000) are in use, override them:
+Local mode defaults to 8085 (follow-api), 8095 (follow-image-gateway) and
+6379 (Valkey). If those are in use, override via env vars:
 
 ```bash
 VALKEY_ADDRESS=localhost:16379 \
-API_URL=http://localhost:18080 \
-GATEWAY_URL=http://localhost:18090 \
+API_URL=http://localhost:18085 \
+GATEWAY_URL=http://localhost:18095 \
 go test -tags=integration -v -count=1 ./...
 ```
 
-Note: `POSTGRES_HOST_PORT` and `MINIO_HOST_PORT` are only relevant in docker
-mode — in local mode, you point `follow-api` at its own database via its
-config/env.
+In local mode, PostgreSQL and MinIO are not managed by the test suite — you
+point `follow-api` at its own database and object store via its own config
+or env.
+
+### Port conflicts (docker mode)
+
+Docker mode host ports are controlled by `tests/integration/.env`. Defaults
+are offset into the 25xxx–29xxx range so they don't clash with either the
+dev stack (5432, 6379, 8080, 8090, 9000) or systemd-managed services. If
+something on your machine still collides, edit the `*_HOST_PORT` values in
+`.env` and re-run.
 
 ### Service not reachable after 60s
 
