@@ -8,6 +8,9 @@ follow-app-worktrees/
 
 # Environment (sensitive values)
 .env
+# Exception: the integration test env file contains dummy credentials
+# only and is required for docker-mode runs and CI.
+!tests/integration/.env
 
 # OS
 .DS_Store
