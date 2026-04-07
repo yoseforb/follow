@@ -1,0 +1,33 @@
+# Exclude everything by default, then allow what's needed for Docker builds
+**
+
+# Allow follow-pkg (needed by both services via go.mod replace directive)
+!follow-pkg/**
+!follow-pkg/
+
+# Allow follow-api source (needed for follow-api image)
+!follow-api/**
+!follow-api/
+
+# Allow follow-image-gateway source (needed for follow-image-gateway image)
+!follow-image-gateway/**
+!follow-image-gateway/
+
+# Exclude git metadata from sub-repos
+follow-api/.git/**
+follow-image-gateway/.git/**
+follow-pkg/.git/**
+
+# Exclude dev/test artifacts from sub-repos
+follow-api/server
+follow-image-gateway/server
+follow-api/**/*.pdf
+follow-image-gateway/**/*.pdf
+follow-api/**/output/
+follow-image-gateway/**/output/
+follow-api/**/.env
+follow-image-gateway/**/.env
+follow-pkg/**/.env
+follow-api/**/secrets/
+follow-image-gateway/**/secrets/
+follow-pkg/**/secrets/
