@@ -1,0 +1,27 @@
+# Test-only compose override — loaded on top of the root
+# docker-compose.yml when the cross-repo integration tests start the
+# stack in docker mode. Mirrors the env vars that setupLocal() sets on
+# the follow-api subprocess, so docker mode exercises the same API
+# behavior as local mode.
+#
+# This file intentionally does NOT redeclare the base service config —
+# Docker Compose merges list-form `environment:` entries by variable
+# name, so the base service's image/build/depends_on/ports/healthcheck
+# are preserved and only the listed vars are added or overridden.
+#
+# IMPORTANT: do not add production-style settings here. This file is
+# for semantics that must differ between "dev stack" and "integration
+# test run" — e.g. disabling rate limiting so a test suite can hit the
+# anonymous-user endpoint hundreds of times without tripping 429s.
+
+services:
+  follow-api:
+    environment:
+      # Tests hit POST /api/v1/users/anonymous many times in a single
+      # run. Rate limiting would cause spurious 429s in tests that are
+      # unrelated to rate-limit behavior.
+      - RATE_LIMIT_ENABLED=false
+      # Reclaimer tuned aggressively so tests that exercise pending/
+      # stuck-message recovery don't have to wait minutes.
+      - RECLAIMER_IDLE_TIMEOUT=5s
+      - RECLAIMER_SCAN_INTERVAL=2s

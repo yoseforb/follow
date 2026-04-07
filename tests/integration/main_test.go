@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/rs/zerolog/log"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 	valkeygo "github.com/valkey-io/valkey-go"
@@ -177,38 +178,42 @@ func setupDocker() {
 	}
 
 	composePath := filepath.Join(projectRoot, "docker-compose.yml")
+	// Test-only override merged on top of the root compose file.
+	// Adds follow-api env vars (RATE_LIMIT_ENABLED=false, reclaimer
+	// tuning) that mirror setupLocal()'s subprocess env, without
+	// touching the base compose used by the dev stack.
+	composeTestOverride := "docker-compose.test.yml"
 
-	envOverrides := map[string]string{
-		"POSTGRES_HOST_PORT":      "15432",
-		"VALKEY_HOST_PORT":        "16379",
-		"MINIO_HOST_PORT":         "19000",
-		"MINIO_CONSOLE_HOST_PORT": "19001",
-		"API_HOST_PORT":           "18085",
-		"GATEWAY_HOST_PORT":       "18095",
-		"POSTGRES_CONTAINER_NAME": "follow-postgres-test",
-		"VALKEY_CONTAINER_NAME":   "follow-valkey-test",
-		"MINIO_CONTAINER_NAME":    "follow-minio-test",
-		"API_CONTAINER_NAME":      "follow-api-test",
-		"GATEWAY_CONTAINER_NAME":  "follow-image-gateway-test",
-		"NETWORK_NAME":            "follow-internal-test",
-		// Override HOST_IP so follow-api emits presigned MinIO URLs
-		// and gateway upload URLs pointing at localhost (reachable by
-		// the test binary on the host) rather than whatever LAN IP
-		// the developer's sibling .env carries for phone access.
-		"HOST_IP": "localhost",
+	// Load tests/integration/.env into the process environment.
+	// This is the single source of truth for docker-mode config:
+	// test-only credentials, port overrides (25xxx/26xxx/28xxx/29xxx
+	// to avoid collision with the dev stack), container/network names
+	// suffixed with -test, and HOST_IP=localhost so the follow-api
+	// emits presigned URLs that the test binary can actually reach.
+	// testcontainers-go does not auto-load .env, so we load it here
+	// and rely on composeStack.WithOsEnv() below to forward the
+	// values into compose variable substitution.
+	envMap, err := godotenv.Read(".env")
+	if err != nil {
+		log.Error().Err(err).Msg(
+			"failed to read tests/integration/.env",
+		)
+		os.Exit(1)
 	}
-
-	for k, v := range envOverrides {
-		err := os.Setenv(k, v)
+	for k, v := range envMap {
+		err = os.Setenv(k, v)
 		if err != nil {
 			log.Error().Str("key", k).Err(err).Msg(
-				"failed to set env override",
+				"failed to set env from .env",
 			)
 			os.Exit(1)
 		}
 	}
 
-	stack, err := compose.NewDockerCompose(composePath)
+	stack, err := compose.NewDockerCompose(
+		composePath,
+		composeTestOverride,
+	)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create compose stack")
 		os.Exit(1)
@@ -216,15 +221,27 @@ func setupDocker() {
 	composeStack = stack
 
 	ctx := context.Background()
-	err = composeStack.Up(ctx, compose.Wait(true))
+	// WithOsEnv ensures testcontainers evaluates compose variable
+	// substitutions (e.g. ${NETWORK_NAME:-follow-internal}) using the
+	// current process environment, which now contains everything from
+	// tests/integration/.env. Without this, the compose-go library
+	// falls back to defaults and tries to manage the dev-stack network
+	// by mistake.
+	err = composeStack.WithOsEnv().Up(ctx, compose.Wait(true))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to start compose stack")
 		os.Exit(1)
 	}
 
-	valkeyAddress = "localhost:16379"
-	apiURL = "http://localhost:18085"
-	gatewayURL = "http://localhost:18095"
+	// Host-side URLs are built from HOST_IP + *_HOST_PORT in .env so
+	// this code stays in sync with the compose mappings without
+	// hard-coding values in two places. HOST_IP is normally "localhost"
+	// in the test .env but can be pointed at a LAN IP (e.g. for remote
+	// debugging from another machine) by editing .env alone.
+	hostIP := envMap["HOST_IP"]
+	valkeyAddress = hostIP + ":" + envMap["VALKEY_HOST_PORT"]
+	apiURL = "http://" + hostIP + ":" + envMap["API_HOST_PORT"]
+	gatewayURL = "http://" + hostIP + ":" + envMap["GATEWAY_HOST_PORT"]
 
 	log.Info().
 		Str("api_url", apiURL).
