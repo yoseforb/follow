@@ -34,7 +34,7 @@ by following the photo sequence — no GPS required.
 The platform consists of two Go backend services, a Flutter mobile app, and
 shared Go utilities:
 
-```
+```plaintext
 ┌─────────────┐       REST/SSE        ┌──────────────┐
 │  follow-app  │◄────────────────────►│  follow-api   │
 │  (Flutter)   │                      │  (port 8080)  │
@@ -209,7 +209,7 @@ data: {"event_type":"ready","image_id":"<uuid>","status":"ready","timestamp":"20
 | `PUT` | `/api/v1/upload` | Ed25519 JWT | Upload an image for processing. Accepts raw binary image data. JWT claims specify `image_id`, `storage_key`, `max_file_size`, `content_type`. Image is validated, analyzed (ML detection), transformed (resize + WebP), and uploaded to MinIO. Returns immediately with 202 — processing is asynchronous. |
 
 **Request**:
-```
+```plaintext
 PUT /api/v1/upload
 Authorization: Bearer <Ed25519 JWT signed by follow-api>
 Content-Type: application/octet-stream
@@ -273,7 +273,7 @@ internal/
 The server boots in a strict dependency order. Each step must succeed before the
 next begins:
 
-```
+```plaintext
 1. Logger initialization
 2. Configuration loading (Viper + CLI flags)
 3. Database initialization
@@ -313,11 +313,11 @@ next begins:
 14. Goa HTTP server start (blocking)
 ```
 
-### 3.3 Shutdown Sequence
+### 4.3 Shutdown Sequence
 
 Graceful shutdown proceeds in reverse dependency order:
 
-```
+```plaintext
 1. Signal received (SIGTERM/SIGINT)
 2. Stop reclaimer (cancel context, wait for scan to complete)
 3. Stop background scheduler (cancel all jobs, wait with timeout)
@@ -330,7 +330,7 @@ Graceful shutdown proceeds in reverse dependency order:
 8. Close database connection pool
 ```
 
-### 3.4 Database Schema
+### 4.4 Database Schema
 
 Three PostgreSQL schemas provide domain isolation:
 
@@ -352,13 +352,13 @@ migrations on startup. Current migrations (in application order):
 
 ---
 
-## 4. follow-image-gateway Architecture
+## 5. follow-image-gateway Architecture
 
-### 4.1 Pipeline Design (Pipes and Filters)
+### 5.1 Pipeline Design (Pipes and Filters)
 
 The gateway processes images through a 4-stage concurrent pipeline:
 
-```
+```plaintext
 Upload Request
      │
      ▼
@@ -381,7 +381,7 @@ Each stage runs as independent goroutine workers connected by Go channels:
 | **Transform**  | 2 | Image resize, format conversion (JPEG→WebP), quality optimization |
 | **Upload**     | 3 | Upload processed WebP to MinIO with retry |
 
-### 4.2 Worker Processing Model
+### 5.2 Worker Processing Model
 
 Each worker goroutine follows this pattern:
 
@@ -411,11 +411,11 @@ Key design decisions:
 - **Channel merging**: The last stage output and error channel merge into a single result
   channel consumed by the result publisher
 
-### 4.3 Upload Service (HTTP Handler)
+### 5.3 Upload Service (HTTP Handler)
 
 The upload endpoint processes incoming image data:
 
-```
+```plaintext
 PUT /upload/{image_id}
 Authorization: Bearer <Ed25519 JWT>
 Content-Type: application/octet-stream
@@ -434,13 +434,13 @@ Processing steps:
    Return 503 if pipeline unavailable or submission times out.
 6. **Response**: 202 Accepted (processing is asynchronous)
 
-### 4.4 Result Publishing
+### 5.4 Result Publishing
 
 After pipeline completion (success or failure), the result publisher:
 
 1. **Update Valkey progress hash** (`image:status:{id}`):
    - Success: `stage=done`, `progress=100`
-   - Failure: `stage=failed`, `progress=-1`, `error=<message>`
+   - Failure: `stage=failed`, `progress=-1`, `error=[error_message]`
    - Retries up to 3 times with exponential backoff (100ms, 200ms, 400ms)
 
 2. **Publish to Valkey stream** (`image:result`):
@@ -454,12 +454,12 @@ After pipeline completion (success or failure), the result publisher:
 
 ---
 
-## 5. follow-pkg Shared Contracts
+## 6. follow-pkg Shared Contracts
 
 All cross-service Valkey contracts are defined as Go constants in
 `follow-pkg/valkey/contracts.go`. Both services import these — no string literals.
 
-### 5.1 Key Patterns
+### 6.1 Key Patterns
 
 | Pattern | Example | Purpose |
 |---------|---------|---------|
@@ -468,7 +468,7 @@ All cross-service Valkey contracts are defined as Go constants in
 | `image:result` | — | Stream: gateway→API result messages |
 | `image:result:dlq` | — | Stream: dead-letter queue for failed processing |
 
-### 5.2 Progress Hash Fields (`image:status:{id}`)
+### 6.2 Progress Hash Fields (`image:status:{id}`)
 
 | Field | Values | Written By |
 |-------|--------|------------|
@@ -477,10 +477,10 @@ All cross-service Valkey contracts are defined as Go constants in
 | `updated_at` | RFC3339 timestamp | Both |
 | `error` | Error message string | Gateway (on failure), Reaper (on timeout) |
 
-### 5.3 Result Stream Fields (`image:result`)
+### 6.3 Result Stream Fields (`image:result`)
 
 **Success message**:
-```
+```plaintext
 image_id:         UUID string
 status:           "processed"
 storage_key:      "images/{id}.webp"
@@ -504,7 +504,7 @@ error_message:    human-readable description
 failed_at:        RFC3339 timestamp
 ```
 
-### 5.4 Consumer Group Configuration
+### 6.4 Consumer Group Configuration
 
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
@@ -518,9 +518,9 @@ failed_at:        RFC3339 timestamp
 
 ---
 
-## 6. Inter-Service Communication
+## 7. Inter-Service Communication
 
-### 6.1 Communication Protocols
+### 7.1 Communication Protocols
 
 | From | To | Protocol | Mechanism |
 |------|----|----------|-----------|
@@ -537,19 +537,19 @@ failed_at:        RFC3339 timestamp
 | API → MinIO | S3 PresignedGet | Generate download URLs (24h expiry) |
 | API → PostgreSQL | SQL | All entity persistence |
 
-### 6.2 Authentication Flow
+### 7.2 Authentication Flow
 
 Two independent JWT systems operate simultaneously:
 
 **User Authentication** (symmetric):
-```
+```plaintext
 App ──POST /users/anonymous──► API creates user, returns JWT
 App ──Authorization: Bearer <JWT>──► API validates on every request
 App ──POST /auth/refresh──► API issues new JWT
 ```
 
 **Upload Authentication** (asymmetric, Ed25519):
-```
+```plaintext
 API signs upload token ──(JWT claims: image_id, storage_key, max_file_size)──►
 App receives upload_url + upload_token in create-waypoints response
 App ──PUT {upload_url} Authorization: Bearer {upload_token}──► Gateway
@@ -562,15 +562,15 @@ the token signature.
 
 ---
 
-## 7. Entity Lifecycle & Aggregates
+## 8. Entity Lifecycle & Aggregates
 
-### 7.1 Route Aggregate
+### 8.1 Route Aggregate
 
 The Route is the primary aggregate root. It owns Waypoints, which reference Images.
 
 **Status Transitions**:
 
-```
+```plaintext
                  /prepare              /create-waypoints
  (no entity) ───────────► PREPARING ─────────────────────► PENDING
                            (12h TTL)                          │
@@ -598,7 +598,7 @@ The Route is the primary aggregate root. It owns Waypoints, which reference Imag
 
 The route aggregate carries a `version` field. Every mutation increments the version:
 
-```
+```plaintext
 v1 (create) → v2 (add waypoints) → v3 (confirm image 1) → v4 (confirm image 2)
 → v5 (all confirmed, PENDING→READY) → v6 (publish) → v7 (update metadata) → ...
 ```
@@ -609,7 +609,7 @@ result processor retries up to 3 times with backoff (50ms, 100ms, 150ms).
 
 **Aggregate Boundaries**:
 
-```
+```plaintext
 Route (aggregate root)
   ├── location_name, description, address, start_point, end_point
   ├── status (preparing → pending → ready → published → archived)
@@ -625,14 +625,14 @@ Route (aggregate root)
         └── pending_replacement_image_id (nullable, for atomic swap)
 ```
 
-### 7.2 Image Entity
+### 8.2 Image Entity
 
 Images are independent entities (not part of the Route aggregate) managed by the
 Image module. They track the full lifecycle from upload preparation to deletion.
 
 **Status Transitions**:
 
-```
+```plaintext
                  create-waypoints           gateway pipeline
  (no entity) ──────────────────► PENDING ─────────────────► PROCESSED
                                     │                           │
@@ -648,7 +648,7 @@ Image module. They track the full lifecycle from upload preparation to deletion.
 
 **Image Entity Fields**:
 
-```
+```plaintext
 Image
   ├── id (UUID, generated by API)
   ├── storage_key ("images/{id}.jpg" → "images/{id}.webp" after processing)
@@ -671,7 +671,7 @@ Image
 **Storage Key Evolution**:
 
 The storage key changes extension after processing:
-```
+```plaintext
 Prepared:  images/f0862db7-c7f1-499d-899f-0fea2d11e7b4.jpg
 Processed: images/f0862db7-c7f1-499d-899f-0fea2d11e7b4.webp
 ```
@@ -679,9 +679,9 @@ Processed: images/f0862db7-c7f1-499d-899f-0fea2d11e7b4.webp
 The API updates the entity's `storage_key` and `content_type` when it receives the
 processed result from the Valkey stream.
 
-### 7.3 Anonymous User Entity
+### 8.3 Anonymous User Entity
 
-```
+```plaintext
 AnonymousUser
   ├── id (UUID)
   ├── created_at
@@ -696,11 +696,11 @@ Anonymous users are lightweight entities. They exist to:
 The repository maintains an in-memory cache populated on create and read,
 invalidated on delete.
 
-### 7.4 Waypoint Image Replacement
+### 8.4 Waypoint Image Replacement
 
 Image replacement is an atomic swap that keeps the route published:
 
-```
+```plaintext
 1. Prepare replacement:
    - Create new Image entity (PENDING)
    - Set waypoint.pending_replacement_image_id = new_image_id
@@ -718,11 +718,11 @@ Image replacement is an atomic swap that keeps the route published:
 
 ---
 
-## 8. Data Flows
+## 9. Data Flows
 
-### 8.1 Route Creation Flow (End-to-End)
+### 9.1 Route Creation Flow (End-to-End)
 
-```
+```plaintext
 App                          API                           Gateway              Valkey            MinIO
  │                            │                              │                    │                 │
  │ POST /users/anonymous      │                              │                    │                 │
@@ -803,11 +803,11 @@ App                          API                           Gateway              
  │                            │ DB confirms route READY      │                    │                 │
 ```
 
-### 8.2 Image Result Processing (API Consumer Detail)
+### 9.2 Image Result Processing (API Consumer Detail)
 
 When the API consumer reads a message from `image:result`:
 
-```
+```plaintext
 XREADGROUP GROUP api-workers api-1 BLOCK 5000 COUNT 10 STREAMS image:result >
 │
 ├── Parse message fields (image_id, status, storage_key, sha256, ...)
@@ -837,9 +837,9 @@ XREADGROUP GROUP api-workers api-1 BLOCK 5000 COUNT 10 STREAMS image:result >
 └── XACK image:result message_id
 ```
 
-### 8.3 Route Navigation Flow
+### 9.3 Route Navigation Flow
 
-```
+```plaintext
 App                          API                                          MinIO
  │                            │                                             │
  │ GET /routes/{id}?include_images=true                                     │
@@ -863,11 +863,11 @@ App                          API                                          MinIO
  │ (no further server contact)│                                             │
 ```
 
-### 8.4 Cascade Deletion Flow
+### 9.4 Cascade Deletion Flow
 
 User deletion triggers a full cascade through the event bus:
 
-```
+```plaintext
 DELETE /users/anonymous/{id}
 │
 ├── Delete user from PostgreSQL
@@ -900,9 +900,9 @@ by background cleanup jobs (orphan-image-scan, orphan-storage-scan).
 
 ---
 
-## 9. Event Bus & Cascade Patterns
+## 10. Event Bus & Cascade Patterns
 
-### 9.1 Event Bus Configuration
+### 10.1 Event Bus Configuration
 
 The event bus uses Watermill's GoChannel implementation (in-memory, non-persistent):
 
@@ -914,7 +914,7 @@ The event bus uses Watermill's GoChannel implementation (in-memory, non-persiste
 | Poison queue buffer | 32 messages |
 | Handler timeout | 30s |
 
-### 9.2 Subscribed Topics and Handlers
+### 10.2 Subscribed Topics and Handlers
 
 | Topic | Handler | Action |
 |-------|---------|--------|
@@ -923,7 +923,7 @@ The event bus uses Watermill's GoChannel implementation (in-memory, non-persiste
 | `domain.image.deleted` | ImageDeletedHandler | Delete Valkey progress key `image:status:{id}` |
 | `domain.image.upload.prepared` | ImageUploadPreparedHandler | Write initial Valkey status `{stage:queued}` |
 
-### 9.3 Published but Unsubscribed Events
+### 10.3 Published but Unsubscribed Events
 
 These events are published for observability and future extensibility but currently
 have no subscribers:
@@ -945,9 +945,9 @@ normal behavior, not an error.
 
 ---
 
-## 10. Background Systems
+## 11. Background Systems
 
-### 10.1 Stale Image Reaper
+### 11.1 Stale Image Reaper
 
 **Purpose**: Detect images stuck in non-terminal processing stages and mark them as
 failed. This handles cases where the gateway crashes, the pipeline hangs, or a Valkey
@@ -955,7 +955,7 @@ message is lost.
 
 **Mechanism**:
 
-```
+```plaintext
 Every ScanInterval (1s test / 10s prod):
 │
 ├── SCAN 0 MATCH "image:status:*" COUNT 100
@@ -983,13 +983,13 @@ Every ScanInterval (1s test / 10s prod):
 stuck for at least 30 seconds before it's reaped. This gives the pipeline adequate
 time for ML inference (~300-500ms) and image processing (~200-400ms).
 
-### 10.2 Valkey Stream Consumer
+### 11.2 Valkey Stream Consumer
 
 **Purpose**: Continuously read image processing results from the gateway and update
 API state.
 
 **Consumer Loop**:
-```
+```plaintext
 XREADGROUP GROUP api-workers api-1 BLOCK 5000 COUNT 10 STREAMS image:result >
 │
 ├── On message: call ImageResultProcessor.Process()
@@ -1002,13 +1002,13 @@ XREADGROUP GROUP api-workers api-1 BLOCK 5000 COUNT 10 STREAMS image:result >
 └── On Valkey error: retry with backoff (100ms, 200ms, 400ms), then terminate
 ```
 
-### 10.3 Valkey Stream Reclaimer
+### 11.3 Valkey Stream Reclaimer
 
 **Purpose**: Reclaim messages that were delivered to a consumer but never ACK'd
 (e.g., consumer crashed mid-processing).
 
 **Reclaimer Loop**:
-```
+```plaintext
 Every ScanInterval (2s test / 1m prod):
 │
 ├── XAUTOCLAIM image:result api-workers api-1-reclaimer IdleTimeout 0-0 COUNT 10
@@ -1024,7 +1024,7 @@ Every ScanInterval (2s test / 1m prod):
 └── Continue loop
 ```
 
-### 10.4 Background Scheduler Jobs
+### 11.4 Background Scheduler Jobs
 
 | Job | Interval | Max Duration | Purpose |
 |-----|----------|-------------|---------|
@@ -1038,21 +1038,21 @@ independent — one job's failure does not affect others.
 
 ---
 
-## 11. SSE Real-Time Streaming
+## 12. SSE Real-Time Streaming
 
-### 11.1 Endpoint
+### 12.1 Endpoint
 
-```
+```plaintext
 GET /api/v1/routes/{route_id}/status/stream
 Authorization: Bearer <user JWT>
 Accept: text/event-stream
 ```
 
-### 11.2 Polling Architecture
+### 12.2 Polling Architecture
 
 The SSE endpoint does not use pub/sub. It polls Valkey directly:
 
-```
+```plaintext
 SSE Connection opened
 │
 ├── Load route to get image_ids[]
@@ -1077,7 +1077,7 @@ SSE Connection opened
 └── After 5m: send "complete" {all_done: false}, close stream
 ```
 
-### 11.3 Event Types
+### 12.3 Event Types
 
 | Event Type | Fields | When |
 |------------|--------|------|
@@ -1087,9 +1087,9 @@ SSE Connection opened
 | `failed` | `event_type`, `image_id`, `status`, `error_reason`, `timestamp` | Image stage=failed |
 | `complete` | `event_type`, `all_done`, `timestamp` | All images terminal + DB verified |
 
-### 11.4 Typical SSE Event Sequence (3 images)
+### 12.4 Typical SSE Event Sequence (3 images)
 
-```
+```plaintext
 event: processing
 data: {"event_type":"processing","image_id":"img-1","status":"processing","timestamp":"..."}
 
@@ -1114,9 +1114,9 @@ data: {"event_type":"complete","all_done":true,"timestamp":"..."}
 
 ---
 
-## 12. Error Handling Patterns
+## 13. Error Handling Patterns
 
-### 12.1 Error Classification by Layer
+### 13.1 Error Classification by Layer
 
 | Layer | Error Type | Handling |
 |-------|-----------|----------|
@@ -1139,7 +1139,7 @@ data: {"event_type":"complete","all_done":true,"timestamp":"..."}
 | **Upload Service** | Pipeline unavailable | Return 503 Service Unavailable |
 | **Upload Service** | Body too large | Return 413 Payload Too Large |
 
-### 12.2 Error Domain Types
+### 13.2 Error Domain Types
 
 Both Go services use rich domain errors with `errors.Is()` and `fmt.Errorf("%w")`:
 
@@ -1168,9 +1168,9 @@ API service layer maps domain errors to HTTP status codes.
 
 ---
 
-## 13. Timing Reference
+## 14. Timing Reference
 
-### 13.1 Production Timing Values
+### 14.1 Production Timing Values
 
 | Component | Parameter | Value |
 |-----------|-----------|-------|
@@ -1206,7 +1206,7 @@ API service layer maps domain errors to HTTP status codes.
 | **Scheduler: route-cleanup** | Interval / Max duration | 10m / 10m |
 | **Scheduler: orphan-storage-scan** | Interval / Max duration | 1h / 30m |
 
-### 13.2 Integration Test Timing Overrides
+### 14.2 Integration Test Timing Overrides
 
 | Component | Test Value | Production Value |
 |-----------|-----------|-----------------|
@@ -1216,7 +1216,7 @@ API service layer maps domain errors to HTTP status codes.
 | Reclaimer scan interval | 2s | 1m |
 | Server runtime timeout | 10-15s | (no limit) |
 
-### 13.3 Observed Processing Times (from integration test)
+### 14.3 Observed Processing Times (from integration test)
 
 | Operation | Duration |
 |-----------|----------|
@@ -1236,7 +1236,7 @@ API service layer maps domain errors to HTTP status codes.
 
 ## Appendix: Process-Level Architecture Summary
 
-```
+```plaintext
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         follow-api process                          │
 │                                                                     │
