@@ -1,0 +1,10 @@
+# Gitleaks ignore file
+# Fingerprints of dummy test credentials that gitleaks flags by entropy.
+# These are NOT real secrets.
+
+# Dummy Ed25519 keypair used by the cross-repo integration tests in
+# docker mode. Generated locally, used only by ephemeral test
+# containers, no production access. The keypair is committed so CI
+# and fresh clones can run the test suite without external setup.
+tests/integration/.env:generic-api-key:34
+tests/integration/.env:generic-api-key:35
