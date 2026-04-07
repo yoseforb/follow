@@ -26,8 +26,15 @@ but the following must already be up (typically via systemd or the root
 ### Docker mode (CI/CD)
 
 - Docker Engine and Docker Compose plugin installed and running
-- The root `docker-compose.yml` is used; all services are started and stopped
-  by the test suite automatically
+- Two compose files are merged together by the test harness (via
+  `testcontainers-go`'s multi-file support):
+  - The root `docker-compose.yml` — base service definitions.
+  - `tests/integration/docker-compose.test.yml` — test-only override
+    that adds three `follow-api` env vars (`RATE_LIMIT_ENABLED=false`
+    and aggressive reclaimer tuning) so the suite can hammer the
+    anonymous-user endpoint without tripping 429s and so recovery
+    tests don't wait minutes. The root compose and
+    `follow-api/configs/config.yaml` defaults are untouched.
 - `tests/integration/.env` provides the full configuration (ports, container
   names, network name, host IP, credentials, test Ed25519 keypair). This file
   is **committed** because it contains dummy values only. CI gets it for free
@@ -52,8 +59,8 @@ Override service addresses if your local infrastructure uses non-default ports:
 
 ```bash
 VALKEY_ADDRESS=localhost:6379 \
-API_URL=http://localhost:8080 \
-GATEWAY_URL=http://localhost:8090 \
+API_URL=http://localhost:8085 \
+GATEWAY_URL=http://localhost:8095 \
 go test -tags=integration -v -count=1 ./...
 ```
 
@@ -142,10 +149,13 @@ dev stack (5432, 6379, 8080, 8090, 9000) or systemd-managed services. If
 something on your machine still collides, edit the `*_HOST_PORT` values in
 `.env` and re-run.
 
-### Service not reachable after 60s
+### Service not reachable (local mode)
 
-The test suite waits up to 60 seconds for each service's `/health/` endpoint.
-If this timeout is hit:
+Local mode waits up to 60 seconds for each subprocess's `/health/`
+endpoint. In docker mode this timeout does not apply — container
+readiness is governed by the `healthcheck:` blocks in
+`docker-compose.yml` and `compose.Wait(true)` in `setupDocker`. If
+either mode fails to reach a healthy state:
 
 1. Check that the service compiled successfully (look for build errors in the
    test output).
@@ -154,7 +164,12 @@ If this timeout is hit:
 3. Run the service manually to inspect startup errors:
    ```bash
    cd /home/yoseforb/pkg/follow/follow-api
-   go run ./cmd/server -port 8080 -log-level debug
+   go run ./cmd/server -port 8085 -log-level debug
+   ```
+4. In docker mode, inspect container logs directly:
+   ```bash
+   docker logs follow-api-test
+   docker logs follow-image-gateway-test
    ```
 
 ### Infrastructure not running (local mode)
@@ -172,12 +187,27 @@ cd /home/yoseforb/pkg/follow
 docker compose up -d postgres valkey minio createbuckets
 ```
 
-### Docker mode: stale containers
+### Docker mode: stale containers from a crashed run
 
-If a previous test run crashed without cleanup, stale containers may block
-port binding. Remove them manually:
+Normally you don't need to do anything. `setupDocker` uses a stable
+compose project identifier (`follow-integration-test`) and calls
+`composeStack.Down(ctx, compose.RemoveVolumes(true))` before each
+`Up()`, so any leftovers from a previous Ctrl+C'd or crashed run are
+wiped automatically on the next `go test` invocation.
+
+If you need to force a manual wipe anyway (e.g. you want to reclaim
+disk from the named volumes without running the suite), target the
+test project by name with **both** compose files:
 
 ```bash
-docker compose -f /home/yoseforb/pkg/follow/docker-compose.yml \
+docker compose \
+  -f /home/yoseforb/pkg/follow/docker-compose.yml \
+  -f /home/yoseforb/pkg/follow/tests/integration/docker-compose.test.yml \
+  -p follow-integration-test \
   down -v --remove-orphans
 ```
+
+The `-p follow-integration-test` flag is **required** — without it,
+compose will target whatever project name your current directory +
+`.env` resolve to (often the dev stack), which will not match the
+test containers and will silently no-op.
