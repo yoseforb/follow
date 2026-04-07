@@ -191,6 +191,11 @@ func setupDocker() {
 		"API_CONTAINER_NAME":      "follow-api-test",
 		"GATEWAY_CONTAINER_NAME":  "follow-image-gateway-test",
 		"NETWORK_NAME":            "follow-internal-test",
+		// Override HOST_IP so follow-api emits presigned MinIO URLs
+		// and gateway upload URLs pointing at localhost (reachable by
+		// the test binary on the host) rather than whatever LAN IP
+		// the developer's sibling .env carries for phone access.
+		"HOST_IP": "localhost",
 	}
 
 	for k, v := range envOverrides {
