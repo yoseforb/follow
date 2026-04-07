@@ -696,11 +696,26 @@ Save the output in the password manager. Do NOT paste it into any committed file
 
 Pick a server size at Hetzner Cloud. For MVP+ with one pilot customer:
 
-- **CX22** (2 vCPU, 4GB RAM, 40GB SSD) — minimum viable, may be tight under image processing load.
-- **CX32** (4 vCPU, 8GB RAM, 80GB SSD) — recommended starting point. ~€6/month. Headroom for libvips + ONNX + postgres + everything.
-- **CCX13** (dedicated vCPU) — only if pipeline benchmarks show vCPU contention is real.
+Realistic RAM budget for the full stack (postgres ~1-2GB, image-gateway ~200-500MB with ML models loaded, follow-api ~50-100MB, valkey ~50-100MB, MinIO ~200-300MB, OS+Docker ~500MB) totals ~3-4GB at MVP traffic. The CPU-bursty workload is the gateway's image pipeline (libvips + ONNX inference) which runs in short bursts during route creation, then idles for hours.
 
-Pick a location close to the pilot customer. Use a Debian or Ubuntu LTS image (Caddy and Docker both have first-class packages).
+Prefer the **CPX line (AMD EPYC)** over the CX line (Intel) — at the same price point, CPX gives more vCPUs and is better for the gateway's CPU-bursty workload.
+
+- **CPX21** (3 vCPU AMD shared, 4GB RAM, 80GB SSD) — ~€8/month. Right-sized for MVP. Live-resizable to CPX31 with one click if image processing becomes a bottleneck.
+- **CPX31** (4 vCPU AMD shared, 8GB RAM, 160GB SSD) — ~€11/month. Comfortable headroom; pick this if you want to size up once and not think about it.
+- **CCX13** (2 vCPU dedicated, 8GB RAM) — only if pipeline benchmarks show actual sustained vCPU contention on shared CPUs. Roughly 2-3x the price for guaranteed cores. Skip unless evidence demands it.
+
+Shared vCPU is fine for this workload: bursts are seconds long, the rest of the day is idle. Hetzner allows live resizing of CPX instances, so start small and scale up only if observed load demands it.
+
+Pick a location close to the pilot customer (Hetzner has Falkenstein/Nuremberg in Germany and Helsinki in Finland for EU; Ashburn for US).
+
+Use **Debian 13 Trixie (Base 64-Bit)** from Hetzner's standard images. Reasons:
+- Current Debian stable (released 2025), gets security backports without version churn
+- Smaller and quieter than Ubuntu (no snap, no Canonical telemetry, no MOTD ads)
+- Massive community for troubleshooting
+- Docker and Caddy have first-class packages
+- Boring and predictable — exactly what you want for a server you SSH into once a month
+
+Avoid Arch (rolling release is a footgun for unattended servers), Ubuntu (snap + Canonical baggage), CentOS Stream (less stable than Rocky/Alma), and older Debian/Ubuntu releases.
 
 **Acceptance Criteria**
 
@@ -1048,7 +1063,7 @@ Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in de
 | Cloudflare Pages domain handshake forgotten | App serves the wrong response | Task 4 explicitly calls out the two-sided handshake; verified before Phase 5 |
 | Backup script silently broken | Customer data loss on host failure | Task 19 (restore drill) is mandatory and gates Phase 6 |
 | First-deploy env var typo | Stack fails to boot | Task 17 (local prod profile test) catches this before touching Hetzner |
-| Postgres OOM under image processing load | DB crash, data loss risk | Task 6 (resource limits) caps everything; CX32 has headroom |
+| Postgres OOM under image processing load | DB crash, data loss risk | Task 6 (resource limits) caps everything; CPX21/CPX31 has headroom for MVP load, live-resizable if not |
 | SSE long-lived connections die through Caddy | Status streaming broken in production | Task 22 verifies SSE locally through self-signed Caddy before Hetzner |
 | ufw blocks port 80, Let's Encrypt HTTP-01 fails | Cert issuance fails | Task 25 explicitly opens 80 and 443 |
 | User locks themselves out via SSH hardening | Manual recovery via Hetzner console | Test the hardened SSH config from a SECOND terminal before closing the original session |
