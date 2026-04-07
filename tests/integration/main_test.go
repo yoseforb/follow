@@ -210,24 +210,48 @@ func setupDocker() {
 		}
 	}
 
-	stack, err := compose.NewDockerCompose(
-		composePath,
-		composeTestOverride,
+	// Use a stable StackIdentifier so every run shares the same
+	// compose project name. Without this, tc-go generates a fresh
+	// UUID per NewDockerCompose call and containers from a crashed
+	// previous run carry the *previous* project label — invisible
+	// to the current run's Down(), so defensive cleanup cannot find
+	// them. With a pinned identifier, run N+1's Down() sees run N's
+	// leftovers via the shared compose project label and wipes them.
+	stack, err := compose.NewDockerComposeWith(
+		compose.WithStackFiles(composePath, composeTestOverride),
+		compose.StackIdentifier("follow-integration-test"),
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to create compose stack")
 		os.Exit(1)
 	}
-	composeStack = stack
+	composeStack = stack.WithOsEnv()
 
 	ctx := context.Background()
-	// WithOsEnv ensures testcontainers evaluates compose variable
-	// substitutions (e.g. ${NETWORK_NAME:-follow-internal}) using the
-	// current process environment, which now contains everything from
-	// tests/integration/.env. Without this, the compose-go library
-	// falls back to defaults and tries to manage the dev-stack network
-	// by mistake.
-	err = composeStack.WithOsEnv().Up(ctx, compose.Wait(true))
+
+	// Defensive teardown before Up: if a previous run crashed without
+	// calling teardownDocker, stale follow-*-test containers and/or
+	// named volumes (postgres_data, valkey_data, minio_data) will
+	// block compose from creating the fresh set, and stale data in
+	// the named volumes would poison the next run. Down() with
+	// RemoveVolumes wipes both. Errors are logged but not fatal —
+	// "nothing to tear down" is the expected state on a clean run.
+	err = composeStack.Down(ctx, compose.RemoveVolumes(true))
+	if err != nil {
+		log.Warn().Err(err).Msg(
+			"pre-run compose Down returned an error " +
+				"(usually safe: nothing to tear down)",
+		)
+	}
+
+	// WithOsEnv (applied above on stack creation) ensures
+	// testcontainers evaluates compose variable substitutions
+	// (e.g. ${NETWORK_NAME:-follow-internal}) using the current
+	// process environment, which now contains everything from
+	// tests/integration/.env. Without it, the compose-go library
+	// falls back to defaults and tries to manage the dev-stack
+	// network by mistake.
+	err = composeStack.Up(ctx, compose.Wait(true))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to start compose stack")
 		os.Exit(1)
@@ -242,6 +266,13 @@ func setupDocker() {
 	valkeyAddress = hostIP + ":" + envMap["VALKEY_HOST_PORT"]
 	apiURL = "http://" + hostIP + ":" + envMap["API_HOST_PORT"]
 	gatewayURL = "http://" + hostIP + ":" + envMap["GATEWAY_HOST_PORT"]
+
+	// Match setupLocal: wipe any stale image:result / image:result:dlq
+	// streams so the API consumer group starts with a fresh watermark.
+	// With the defensive Down above, volumes are already wiped on a
+	// crash-recovered run, but calling this here keeps docker mode in
+	// parity with local mode and provides cheap insurance.
+	cleanValkeyStreams(valkeyAddress)
 
 	log.Info().
 		Str("api_url", apiURL).
