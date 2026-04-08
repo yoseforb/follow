@@ -75,7 +75,7 @@ Tasks are grouped into 6 phases. Within a phase, tasks are mostly sequential. Ph
 5. **Phase 5**: First deploy & verify
 6. **Phase 6**: Cutover & cleanup
 
-**Total tasks: 38.** Realistic effort: **3-4 focused days**, +1 day buffer for cert/CORS/SSE surprises.
+**Total tasks: 39.** Realistic effort: **3-4 focused days**, +1 day buffer for cert/CORS/SSE surprises.
 
 ---
 
@@ -263,6 +263,56 @@ Root compose currently sets `REAPER_SCAN_INTERVAL=1s` and `REAPER_STALE_THRESHOL
 
 ---
 
+### Task 8b: Decide and configure Valkey persistence
+
+**Story Points**: 1
+
+**Description**
+
+Valkey holds two pieces of state that matter to the upload pipeline:
+
+- `image:status:{id}` hashes — current stage of each in-flight image (queued / validating / analyzing / transforming / uploading).
+- `image:result` Redis Stream — the messages the gateway publishes and `follow-api` consumes to mark images as processed.
+
+If Valkey restarts with no persistence, both of these vanish. Concretely: any image that is mid-pipeline when Valkey restarts is orphaned — the client's SSE stream never gets a terminal event, `follow-api` never sees the result, and the route stays stuck in `PENDING` forever. This is a correctness bug, not a performance one, and the "fix at root" principle says to handle it now, not after the first pilot customer hits it.
+
+**Decision**: enable AOF (append-only file) persistence on Valkey. AOF flushes every second by default — acceptable durability with near-zero overhead for this workload (low write volume, short-lived streams). Snapshot-only (`save` RDB) is not enough because the window between snapshots is exactly where in-flight state lives.
+
+**Config change** in `docker-compose.yml`:
+
+```yaml
+valkey:
+  image: valkey/valkey:8-alpine
+  command:
+    - valkey-server
+    - --appendonly
+    - "yes"
+    - --appendfsync
+    - everysec
+    - --maxmemory
+    - 256mb
+    - --maxmemory-policy
+    - noeviction
+  volumes:
+    - valkey_data:/data
+  # ... existing healthcheck, logging, deploy blocks
+```
+
+Add `valkey_data` to the top-level `volumes:` block if it is not already there. `maxmemory-policy: noeviction` is deliberate — if Valkey runs out of memory, new writes fail loudly (visible in logs and healthchecks), which is correct. Silent eviction of pipeline state would be worse than an outage.
+
+**Files Affected**
+
+- `docker-compose.yml` — add `command:` and `volumes:` to `valkey` service, register `valkey_data` volume.
+
+**Acceptance Criteria**
+
+- `docker compose exec valkey valkey-cli CONFIG GET appendonly` returns `yes`.
+- `docker compose exec valkey ls /data` shows `appendonlydir/` (AOF file layout).
+- Kill-restart test: trigger an image upload, kill valkey mid-pipeline (`docker compose kill valkey && docker compose up -d valkey`), verify the stream replays the `image:result` message and the image completes processing without client intervention.
+- Memory cap is enforced (`CONFIG GET maxmemory` returns `268435456`).
+
+---
+
 ### Task 9: Add Caddy service under `profiles: [prod]`
 
 **Story Points**: 2
@@ -287,10 +337,8 @@ caddy:
   networks:
     - internal
   depends_on:
-    follow-api:
-      condition: service_healthy
-    follow-image-gateway:
-      condition: service_healthy
+    - follow-api
+    - follow-image-gateway
   logging:
     driver: json-file
     options:
@@ -303,6 +351,8 @@ caddy:
 ```
 
 Add `caddy_data` and `caddy_config` to the volumes block.
+
+**Why start-order only, NOT `condition: service_healthy`**: a health-gated `depends_on` creates a chicken-and-egg failure mode. If either app service fails its healthcheck (bad migration, config typo, OOM), Caddy never starts, port 80 is unreachable, and Let's Encrypt cannot renew certs via HTTP-01. Caddy must be allowed to bind `:80` and serve ACME challenges regardless of upstream health — upstream 502s are a correct and observable failure mode, an unrenewable cert is a silent time bomb.
 
 **Acceptance Criteria**
 
@@ -322,20 +372,33 @@ Minimal Caddyfile that maps the two production hostnames to the internal service
 
 ```caddyfile
 api.follow.example {
-    reverse_proxy follow-api:8080
+    request_body {
+        max_size 1MB
+    }
+    reverse_proxy follow-api:8080 {
+        flush_interval -1
+        transport http {
+            read_timeout 10m
+            write_timeout 10m
+        }
+    }
 }
 
 upload.follow.example {
-    reverse_proxy follow-image-gateway:8090
     request_body {
         max_size 15MB
     }
+    reverse_proxy follow-image-gateway:8090
 }
 
 download.follow.example {
     reverse_proxy minio:9000
 }
 ```
+
+**Why `flush_interval -1` and long read/write timeouts on `api.follow.example`**: the SSE endpoint `/api/v1/routes/{id}/status/stream` is a long-lived streaming response. Caddy's default `reverse_proxy` buffers responses (events arrive in batches, not as they happen) and has an idle timeout that can kill streams after a minute or two. `flush_interval -1` disables buffering (flush after every write), and the 10-minute read/write timeouts let the stream stay open through quiet periods. Task 22 verifies this end-to-end, but the config must land here so the verification actually tests the committed file.
+
+**Why `max_size 1MB` on `api.follow.example`**: JSON endpoints never accept more than a few KB. Capping at 1MB prevents the API from being used as a general-purpose upload vector and shields it from payload-based abuse. Image uploads have their own dedicated hostname with a 15MB cap.
 
 The actual hostnames come from Phase 1.
 
@@ -364,17 +427,42 @@ If the gateway limit has grown (e.g., to 20MB for higher-res images), bump the C
 
 ---
 
-### Task 11: Scope host port publishing to the dev profile
+### Task 11: Bind all host-published ports to `127.0.0.1`
 
 **Story Points**: 1
 
 **Description**
 
-In production, `follow-api` and `follow-image-gateway` must not be reachable from the public internet directly — only via Caddy. Caddy reaches them by service name on the internal compose network, so the `ports:` blocks that publish 8080 and 8090 to the host are only needed for laptop convenience.
+In production, `follow-api`, `follow-image-gateway`, `postgres`, `valkey`, and `minio` must not be reachable from the public internet directly — only via Caddy (for the two app services) or the internal docker network (for postgres/valkey/minio). Caddy reaches upstreams by service name on the internal compose network, so published ports are only useful for laptop `curl` / `psql` convenience.
 
-**Approach**: extract the two app services' host port publishing into a separate override-style service definition under `profiles: [dev]`. The default (no-profile) `docker compose up -d` still gets ports for the laptop workflow; `docker compose --profile prod up -d` does not. Do NOT mix this with the `127.0.0.1` binding trick — pick one mechanism and stick with it.
+**Approach**: bind every `ports:` entry in `docker-compose.yml` to `127.0.0.1` explicitly. This is the simplest, single-mechanism solution and works identically on laptop and Hetzner with no profile gymnastics:
 
-The cleanest pattern is a small compose merge: keep the base service definition without `ports:`, and add a `ports:`-only fragment under `profiles: [dev]` for each service. Alternatively, leave `ports:` on the base service but use a `profiles: [dev]` top-level override if your compose version supports it cleanly.
+```yaml
+follow-api:
+  ports:
+    - "127.0.0.1:${FOLLOW_API_HOST_PORT:-8080}:8080"
+
+follow-image-gateway:
+  ports:
+    - "127.0.0.1:${GATEWAY_HOST_PORT:-8090}:8090"
+
+postgres:
+  ports:
+    - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+
+valkey:
+  ports:
+    - "127.0.0.1:${VALKEY_HOST_PORT:-6379}:6379"
+
+minio:
+  ports:
+    - "127.0.0.1:${MINIO_HOST_PORT:-9000}:9000"
+    - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+```
+
+`127.0.0.1:` binding tells Docker to only listen on the loopback interface. On the Hetzner box, UFW also default-denies external access — this is belt-and-suspenders, but the loopback binding is the authoritative mechanism because it survives a misconfigured UFW. Caddy still reaches upstreams via the internal compose network by service name (`follow-api:8080`), which has nothing to do with the host-published port.
+
+The earlier plan considered `profiles: [dev]` to gate port publishing. That approach was dropped because it contradicted itself — a service under `profiles: [dev]` only starts when the dev profile is active, which would break the default no-profile laptop workflow. Loopback binding is simpler, works unconditionally, and requires zero profile logic.
 
 **Files Affected**
 
@@ -382,10 +470,12 @@ The cleanest pattern is a small compose merge: keep the base service definition 
 
 **Acceptance Criteria**
 
-- After deploy on Hetzner with `--profile prod`, `curl http://<hetzner-ip>:18080/health` from outside the box fails (connection refused or timeout).
+- Every `ports:` entry is prefixed with `127.0.0.1:`.
+- After deploy on Hetzner with `--profile prod`, `curl http://<hetzner-ip>:8080/health` from outside the box fails (connection refused).
+- `ssh follow@<hetzner-ip> curl http://127.0.0.1:8080/health` succeeds from the box itself.
 - `curl https://api.follow.example/health` succeeds (via Caddy).
-- Laptop dev workflow unchanged: `docker compose up -d` still exposes 8080/8090 (or the configured host ports) on localhost.
-- Exactly one mechanism controls port publishing — no `127.0.0.1:` + `profiles:` dual config.
+- Laptop dev workflow unchanged: `curl http://localhost:8080/health` still works.
+- Single mechanism — no `profiles: [dev]` gate on ports anywhere in the file.
 
 ---
 
@@ -397,9 +487,22 @@ The cleanest pattern is a small compose merge: keep the base service definition 
 
 Add a backup container that runs on a cron, dumps postgres, mirrors MinIO to Cloudflare R2, and prunes old backups. Alpine base + `postgresql17-client` + `mc` (MinIO client). Mounted script handles the work.
 
+Build the backup container from a tiny dedicated Dockerfile with `postgresql17-client`, `minio-client`, and `tzdata` baked in. Do NOT `apk add` at container startup — that reinstalls packages on every restart, depends on Alpine mirrors being reachable from the running service, and is fragile by design. Fix at the root: ship a proper image.
+
+```dockerfile
+# scripts/backup.Dockerfile
+FROM alpine:3.21
+RUN apk add --no-cache postgresql17-client minio-client tzdata
+COPY scripts/backup.sh /usr/local/bin/backup.sh
+RUN chmod +x /usr/local/bin/backup.sh
+ENTRYPOINT ["/bin/sh", "-c", "/usr/local/bin/backup.sh install-cron && exec crond -f -d 8 -L /dev/stdout"]
+```
+
 ```yaml
 backup:
-  image: alpine:3.21
+  build:
+    context: .
+    dockerfile: scripts/backup.Dockerfile
   profiles: [prod]
   restart: unless-stopped
   depends_on:
@@ -414,13 +517,10 @@ backup:
     - R2_BACKUP_BUCKET=${R2_BACKUP_BUCKET}
     - POSTGRES_USER=${POSTGRES_USER}
     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    - PGPASSWORD=${POSTGRES_PASSWORD}
     - POSTGRES_DB=${POSTGRES_DB}
     - MINIO_ACCESS_KEY_ID=${MINIO_ACCESS_KEY_ID}
     - MINIO_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY}
-  volumes:
-    - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
-  entrypoint: /bin/sh
-  command: -c "apk add --no-cache postgresql17-client minio-client tzdata && /usr/local/bin/backup.sh install-cron && crond -f -d 8 -L /dev/stdout"
   networks:
     - internal
   logging:
@@ -434,11 +534,20 @@ backup:
         memory: 256m
 ```
 
+`PGPASSWORD` is set from `POSTGRES_PASSWORD` so `pg_dump` authenticates non-interactively without a `.pgpass` file. The script itself (Task 13) does not need to manage credentials.
+
+**Files Affected**
+
+- `docker-compose.yml` — add `backup` service under `profiles: [prod]`.
+- `scripts/backup.Dockerfile` (new).
+
 **Acceptance Criteria**
 
-- `docker compose --profile prod up -d` starts the backup container.
+- `scripts/backup.Dockerfile` exists and builds cleanly (`docker compose --profile prod build backup`).
+- `docker compose --profile prod up -d` starts the backup container — no `apk add` at runtime.
 - Container stays healthy (cron loop running).
-- Manual `docker exec backup /usr/local/bin/backup.sh run-now` succeeds end-to-end.
+- Manual `docker compose --profile prod exec backup /usr/local/bin/backup.sh run-now` succeeds end-to-end.
+- `docker compose --profile prod exec backup which pg_dump mc` returns both binaries (proves they're baked in, not installed on start).
 
 ---
 
@@ -452,14 +561,16 @@ Two-mode script:
 
 1. `install-cron` — writes a `/etc/crontabs/root` entry that runs the backup nightly (e.g., 03:00 UTC).
 2. `run-now` — performs the actual backup:
-   - `pg_dump -Fc -h postgres -U $POSTGRES_USER $POSTGRES_DB | gzip` → upload to `r2://$R2_BACKUP_BUCKET/postgres/YYYY-MM-DD-HHMMSS.dump.gz`
+   - `pg_dump -Fc -h postgres -U $POSTGRES_USER $POSTGRES_DB | gzip` → upload to `r2://$R2_BACKUP_BUCKET/postgres/YYYY-MM-DD-HHMMSS.dump.gz`. `PGPASSWORD` is already set in the container environment (Task 12), so no credential handling in the script.
    - `mc alias set r2 $R2_ENDPOINT $R2_ACCESS_KEY $R2_SECRET_KEY`
    - `mc alias set local http://minio:9000 $MINIO_ACCESS_KEY_ID $MINIO_SECRET_ACCESS_KEY`
-   - `mc mirror --overwrite --remove local/follow-images r2/$R2_BACKUP_BUCKET/minio/follow-images/`
+   - `mc mirror --overwrite local/follow-images r2/$R2_BACKUP_BUCKET/minio/follow-images/`
    - After all steps succeed, write a last-success timestamp to `r2://$R2_BACKUP_BUCKET/_last_success.txt` for Task 34 monitoring.
    - Log success/failure to stdout (caught by Docker logging driver).
 
 Use `set -euo pipefail`. Exit non-zero on any failure so the container restarts and the failure is visible in logs/monitoring.
+
+**Critical: do NOT pass `--remove` to `mc mirror`.** `--remove` deletes objects from the destination (R2) that no longer exist at the source (local MinIO). If a bug, misconfiguration, or human error deletes objects from local MinIO, the next backup propagates the deletion to R2 — your backup is gone, exactly at the moment you need it most. The mirror must be *additive*: local truth flows to R2, but R2 never shrinks based on local state. The tradeoff is that orphaned objects accumulate in R2 over time. That cost is handled by the 30-day lifecycle rule in Task 16, which ages out anything that hasn't been re-mirrored recently — orphans cost pennies per month on R2 and self-clean within the retention window. A missing `--remove` flag is a rounding error on storage cost; a present `--remove` flag is a data-loss incident waiting to happen.
 
 **MinIO backup strategy — scaling note**:
 
@@ -724,27 +835,24 @@ Process:
 # JWT secret (32+ chars)
 openssl rand -base64 48
 
-# Ed25519 keypair (base64-encoded seed + public key)
-python3 -c "
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives import serialization
-import base64
-priv = Ed25519PrivateKey.generate()
-seed = priv.private_bytes(
-    encoding=serialization.Encoding.Raw,
-    format=serialization.PrivateFormat.Raw,
-    encryption_algorithm=serialization.NoEncryption(),
-)
-pub = priv.public_key().public_bytes(
-    encoding=serialization.Encoding.Raw,
-    format=serialization.PublicFormat.Raw,
-)
-print('FOLLOW_API_ED25519_PRIVATE_KEY=' + base64.b64encode(seed).decode())
-print('FOLLOW_API_ED25519_PUBLIC_KEY=' + base64.b64encode(pub).decode())
-"
+# Ed25519 keypair — pure openssl, no Python dep
+openssl genpkey -algorithm Ed25519 -out /tmp/ed25519_private.pem
+
+echo -n "FOLLOW_API_ED25519_PRIVATE_KEY="
+openssl pkey -in /tmp/ed25519_private.pem -outform DER | tail -c 32 | base64 -w0
+echo
+
+echo -n "FOLLOW_API_ED25519_PUBLIC_KEY="
+openssl pkey -in /tmp/ed25519_private.pem -pubout -outform DER | tail -c 32 | base64 -w0
+echo
+
+# Clean up the PEM file once the base64 values are captured
+shred -u /tmp/ed25519_private.pem 2>/dev/null || rm -f /tmp/ed25519_private.pem
 ```
 
-Save the output in the password manager. Do NOT paste it into any committed file.
+Ed25519 raw keys are exactly 32 bytes. `openssl pkey -outform DER` emits a DER-encoded structure with a fixed prefix; `tail -c 32` slices off the raw 32-byte key at the end — identical to what the cryptography library's Raw encoding produces, without the Python dependency.
+
+Save the output in the password manager. Do NOT paste it into any committed file. Delete the temporary PEM file after capturing the base64 values (the `shred` / `rm` line above).
 
 **Acceptance Criteria**
 
@@ -804,16 +912,28 @@ Basic security hygiene before anything sensitive lands on the box.
 1. Create a non-root `follow` user, add to `sudo` and `docker` groups.
 2. Disable root SSH login (`PermitRootLogin no`).
 3. Disable password SSH (`PasswordAuthentication no`) — keys only.
-4. Install and configure `ufw`: allow 22 (SSH), 80, 443. Deny everything else inbound. Default-deny.
+4. Install and configure `ufw`:
+   - **Enable IPv6 first**: `sudo sed -i 's/^IPV6=.*/IPV6=yes/' /etc/default/ufw`. Hetzner boxes come with a public IPv6 address, and UFW's default configuration on some Debian releases only applies rules to IPv4. Without this step, your "default-deny" covers v4 while v6 traffic flows in unchecked — a silent, critical hole.
+   - `sudo ufw default deny incoming`
+   - `sudo ufw default allow outgoing`
+   - `sudo ufw allow 22/tcp` (SSH)
+   - `sudo ufw allow 80/tcp` (HTTP, needed for Let's Encrypt HTTP-01 challenge)
+   - `sudo ufw allow 443/tcp` (HTTPS)
+   - `sudo ufw allow 443/udp` (HTTP/3 — matches the Caddy port publish from Task 9)
+   - `sudo ufw enable`
 5. Install `unattended-upgrades` for automatic security patches.
 6. Set timezone to UTC (`timedatectl set-timezone UTC`).
 7. Optional but recommended: install `fail2ban` for SSH brute-force protection.
+
+**Test the hardened SSH config from a SECOND terminal BEFORE closing the original session** — if key auth is misconfigured you will be locked out and must recover via the Hetzner web console.
 
 **Acceptance Criteria**
 
 - `ssh follow@<hetzner-ip>` works.
 - `ssh root@<hetzner-ip>` rejected.
-- `ufw status` shows only 22, 80, 443 allowed.
+- `/etc/default/ufw` has `IPV6=yes`.
+- `ufw status verbose` shows only 22/tcp, 80/tcp, 443/tcp, 443/udp allowed, and lists rules for both v4 and v6.
+- From an outside box: `nc -zv <hetzner-ipv6> 8080` fails (connection refused / filtered) — proves v6 default-deny works.
 - `unattended-upgrades --dry-run` runs cleanly.
 
 ---
@@ -1162,7 +1282,7 @@ ONLY after Task 35 passes. Stop and delete the fly.io app, cancel the fly.io sub
 
 **Description**
 
-Minimal viable monitoring for one box:
+Minimal viable monitoring for one box. Everything below is push-based or pull-from-outside — no MTA on the box, no Postfix, no relay.
 
 1. **UptimeRobot** (free tier, 50 monitors) — HTTP(S) checks every 5 minutes on:
    - `https://api.follow.example/health`
@@ -1172,9 +1292,26 @@ Minimal viable monitoring for one box:
    - **Backup last-success keyword monitor** (from Task 34) — watches the `_last_success.txt` R2 object, alerts if stale.
    Alert via email and SMS to the user.
 
-2. **Disk space alert** — simple cron on the box that checks `df` and emails if any partition >85% full. (Or use UptimeRobot's keyword monitor on a custom `/health/disk` endpoint if one exists.)
+2. **Disk space alert via healthchecks.io** — free tier, purpose-built for "ping me every N minutes or alert me". Add a tiny cron on the box:
 
-3. **Log review habit** — once a week, `docker compose logs --since 7d | grep -i error`. Not automated yet, but on the calendar.
+   ```bash
+   # /etc/cron.d/follow-disk-check — runs every 15 minutes
+   */15 * * * * follow /usr/local/bin/disk-check.sh
+   ```
+
+   ```bash
+   # /usr/local/bin/disk-check.sh
+   #!/bin/sh
+   set -eu
+   USAGE=$(df --output=pcent / | tail -n1 | tr -dc '0-9')
+   if [ "$USAGE" -lt 85 ]; then
+     curl -fsS -m 10 --retry 3 "https://hc-ping.com/<healthchecks-uuid>" > /dev/null
+   fi
+   # If usage >=85% we intentionally do NOT ping, and healthchecks.io alerts
+   # when the expected ping fails to arrive within the grace window.
+   ```
+
+   Configure the healthchecks.io check with a 15-minute period + 30-minute grace. No MTA setup required; alerts come from healthchecks.io by email (and optionally Slack/SMS/webhook).
 
 Future (post-MVP): Grafana Cloud free tier scrapes Prometheus metrics from `follow-api`'s `/health/metrics` endpoint. Out of scope for this plan.
 
@@ -1183,7 +1320,7 @@ Future (post-MVP): Grafana Cloud free tier scrapes Prometheus metrics from `foll
 - UptimeRobot configured with 5 monitors (api, upload, download, app, backup-last-success).
 - Test alert verified (intentionally take a service down, confirm alert received).
 - Backup alert verified per Task 34 (break backup temporarily, confirm alert fires).
-- Disk space alert mechanism in place.
+- healthchecks.io disk-check wired up; intentionally fill the disk past 85% in a throwaway test (or stop the cron) and confirm the "missing ping" alert fires within the grace window.
 
 ---
 
@@ -1251,6 +1388,12 @@ Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in de
 | Presigned download URL signature rejected (wrong host) | Images fail to download on production | Task 28 sets `MINIO_EXTERNAL_ENDPOINT=download.follow.example` and `MINIO_USE_SSL=true`; Task 35 verifies URLs contain the correct host |
 | Caddy body size limit drifts from gateway config | Legitimate uploads rejected at proxy, or oversized payloads reach gateway | Task 10 mandates verifying gateway `MaxFileSize` before setting Caddy `max_size` |
 | MinIO backup grows beyond viable full-mirror size | Nightly backup runtime balloons, R2 storage cost grows | Task 13 documents switch criteria (~10GB or ~5 min wall-clock) and alternative strategies; runbook (Task 38) surfaces the check command |
+| Caddy gated on upstream health, blocks cert renewal when app is down | Cert expires silently during any extended app outage | Task 9 uses start-order-only `depends_on`, not `condition: service_healthy`, so Caddy always binds :80 for ACME |
+| `mc mirror --remove` propagates a bad delete into R2 | Backup destroyed at the exact moment it is needed | Task 13 explicitly drops `--remove` and explains why; R2 lifecycle rule (Task 16) handles orphan cleanup instead |
+| Valkey restart loses in-flight image pipeline state | Routes stuck forever in PENDING, SSE never terminates | Task 8b enables AOF persistence with `appendfsync everysec` and `maxmemory-policy noeviction` |
+| UFW configured for v4 only, IPv6 traffic reaches exposed ports | Loopback-bound services + UFW both bypassed on v6; public exposure of 8080/8090 | Task 25 sets `IPV6=yes` in `/etc/default/ufw` before adding rules; v6 deny verified from an outside box |
+| Backup container reinstalls packages on every restart | Fragile, slow, depends on Alpine mirror availability mid-service | Task 12 builds `scripts/backup.Dockerfile` with `pg_dump` and `mc` baked in; entrypoint only starts `crond` |
+| SSE breaks in production because Caddyfile was committed without streaming directives | Half-day of debugging on the box instead of on laptop | Task 10 Caddyfile includes `flush_interval -1` and long read/write timeouts from day one; Task 22 verifies end-to-end against the same committed file |
 
 ---
 
@@ -1293,13 +1436,13 @@ Deliberately NOT in this plan (move to a separate plan when needed):
 | Phase | Tasks | Story Points | Realistic Wall Time |
 |-------|-------|--------------|---------------------|
 | 1. Domain & DNS | 4 | 4 | 30-60 min |
-| 2. Local hardening | 15 | 23 | 4-6 hours |
+| 2. Local hardening | 16 | 24 | 4-6 hours |
 | 3. App code changes | 4 | 7 | 2-3 hours |
 | 4. Hetzner provisioning | 7 | 8 | 1-2 hours |
 | 5. Deploy & verify | 3 | 6 | 1-2 hours |
 | 6. Cutover & cleanup | 5 | 9 | 2-3 hours |
-| **Total** | **38** | **57** | **~3-4 days focused** |
+| **Total** | **39** | **58** | **~3-4 days focused** |
 
-Story points bumped: Task 22 (SSE through Caddy) raised from 2 to 3 to reflect the realistic debugging surface (Caddy buffering, CORS preflight on EventSource, idle timeout, HTTP/2 vs HTTP/1.1). Task 30 (Hetzner automated backups) added to Phase 4 at 1 SP.
+Story points bumped: Task 22 (SSE through Caddy) raised from 2 to 3 to reflect the realistic debugging surface (Caddy buffering, CORS preflight on EventSource, idle timeout, HTTP/2 vs HTTP/1.1). Task 30 (Hetzner automated backups) added to Phase 4 at 1 SP. Task 8b (Valkey AOF persistence) added to Phase 2 at 1 SP to prevent in-flight pipeline state loss on valkey restarts.
 
 The realistic worst case is 4-5 days, with the extra day absorbed by debugging Let's Encrypt cert issuance (now across three hostnames), CORS edge cases, the SSE-through-domain test, the first `follow-image-gateway` Docker build on the Hetzner box, and verifying presigned download URLs land on the correct host. Everything else is mechanical.
