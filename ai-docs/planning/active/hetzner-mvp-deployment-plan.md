@@ -75,7 +75,7 @@ Tasks are grouped into 6 phases. Within a phase, tasks are mostly sequential. Ph
 5. **Phase 5**: First deploy & verify
 6. **Phase 6**: Cutover & cleanup
 
-**Total tasks: 39.** Realistic effort: **3-4 focused days**, +1 day buffer for cert/CORS/SSE surprises.
+**Total tasks: 40.** Realistic effort: **3-4 focused days**, +1 day buffer for cert/CORS/SSE surprises.
 
 ---
 
@@ -235,35 +235,7 @@ Current `start_period: 5s` is too aggressive — `follow-api` runs migrations on
 
 ---
 
-### Task 8: Move aggressive REAPER values out of the root compose
-
-**Story Points**: 1
-
-**Description**
-
-Root compose currently sets `REAPER_SCAN_INTERVAL=1s` and `REAPER_STALE_THRESHOLD=2s` on `follow-api`. These are integration-test tunings (aggressive cleanup to keep tests fast) that bled into the root file. Running 1-second reaper scans under real load would melt the box — the reaper holds table locks during each scan and there's no business reason to scan more than once a minute in production.
-
-**Action**:
-
-1. Remove both env var overrides from `docker-compose.yml` — let the service use its own defaults from `follow-api/configs/config.yaml`.
-2. Verify `follow-api/configs/config.yaml` has sane production defaults (target: `scan_interval: 60s`, `stale_threshold: 5m`). If not, update them.
-3. Move the aggressive test values to `tests/integration/.env` (or wherever the integration harness keeps its env overrides) so tests still get their fast cleanup.
-
-**Files Affected**
-
-- `docker-compose.yml` — remove the two `REAPER_*` lines (around 130-131)
-- `follow-api/configs/config.yaml` — verify/set production defaults
-- `tests/integration/.env` (or equivalent) — move the 1s/2s values here
-
-**Acceptance Criteria**
-
-- Root `docker-compose.yml` no longer sets `REAPER_*` env vars.
-- Production defaults in `config.yaml` are on the order of minutes, not seconds.
-- Integration tests still pass with the moved values.
-
----
-
-### Task 8b: Decide and configure Valkey persistence
+### Task 8: Verify Valkey persistence and reformat command block
 
 **Story Points**: 1
 
@@ -274,42 +246,42 @@ Valkey holds two pieces of state that matter to the upload pipeline:
 - `image:status:{id}` hashes — current stage of each in-flight image (queued / validating / analyzing / transforming / uploading).
 - `image:result` Redis Stream — the messages the gateway publishes and `follow-api` consumes to mark images as processed.
 
-If Valkey restarts with no persistence, both of these vanish. Concretely: any image that is mid-pipeline when Valkey restarts is orphaned — the client's SSE stream never gets a terminal event, `follow-api` never sees the result, and the route stays stuck in `PENDING` forever. This is a correctness bug, not a performance one, and the "fix at root" principle says to handle it now, not after the first pilot customer hits it.
+If these are lost on a Valkey restart, any in-flight image is orphaned: the client's SSE stream never gets a terminal event, `follow-api` never sees the result, and the route stays stuck in `PENDING` forever.
 
-**Decision**: enable AOF (append-only file) persistence on Valkey. AOF flushes every second by default — acceptable durability with near-zero overhead for this workload (low write volume, short-lived streams). Snapshot-only (`save` RDB) is not enough because the window between snapshots is exactly where in-flight state lives.
+**Current state (verified)**: `docker-compose.yml` already runs Valkey with `command: valkey-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction` and maps the `valkey_data:/data` volume. AOF persistence is already on, `appendfsync` defaults to `everysec` when AOF is enabled, and memory is capped. This task is therefore a **verify-and-polish** pass, not a new feature enablement — and the reason it stays in the plan is that the kill-restart drill is the only way to *prove* the persistence actually survives a restart with real pipeline traffic.
 
-**Config change** in `docker-compose.yml`:
+**Action**:
 
-```yaml
-valkey:
-  image: valkey/valkey:8-alpine
-  command:
-    - valkey-server
-    - --appendonly
-    - "yes"
-    - --appendfsync
-    - everysec
-    - --maxmemory
-    - 256mb
-    - --maxmemory-policy
-    - noeviction
-  volumes:
-    - valkey_data:/data
-  # ... existing healthcheck, logging, deploy blocks
-```
+1. Reformat the `command:` line from a single string into a YAML array (easier to diff and add flags to later):
+   ```yaml
+   valkey:
+     image: valkey/valkey:8
+     command:
+       - valkey-server
+       - --appendonly
+       - "yes"
+       - --appendfsync
+       - everysec        # explicit, even though this is the default
+       - --maxmemory
+       - 256mb
+       - --maxmemory-policy
+       - noeviction
+   ```
+2. Run the kill-restart drill (acceptance criterion #3) to confirm the existing config actually does what we think it does. Do NOT skip this step even though the config looks correct — the whole point is to catch the "oh, turns out it wasn't" scenario before the pilot customer does.
 
-Add `valkey_data` to the top-level `volumes:` block if it is not already there. `maxmemory-policy: noeviction` is deliberate — if Valkey runs out of memory, new writes fail loudly (visible in logs and healthchecks), which is correct. Silent eviction of pipeline state would be worse than an outage.
+`maxmemory-policy: noeviction` is deliberate — if Valkey runs out of memory, new writes fail loudly (visible in logs and healthchecks). Silent eviction of pipeline state would be worse than an outage.
 
 **Files Affected**
 
-- `docker-compose.yml` — add `command:` and `volumes:` to `valkey` service, register `valkey_data` volume.
+- `docker-compose.yml` — reformat `valkey.command` to array form, optionally add explicit `--appendfsync everysec`.
 
 **Acceptance Criteria**
 
 - `docker compose exec valkey valkey-cli CONFIG GET appendonly` returns `yes`.
+- `docker compose exec valkey valkey-cli CONFIG GET appendfsync` returns `everysec`.
 - `docker compose exec valkey ls /data` shows `appendonlydir/` (AOF file layout).
-- Kill-restart test: trigger an image upload, kill valkey mid-pipeline (`docker compose kill valkey && docker compose up -d valkey`), verify the stream replays the `image:result` message and the image completes processing without client intervention.
-- Memory cap is enforced (`CONFIG GET maxmemory` returns `268435456`).
+- **Kill-restart drill**: trigger an image upload, kill valkey mid-pipeline (`docker compose kill valkey && docker compose up -d valkey`), verify the stream replays the `image:result` message and the image completes processing without client intervention.
+- Memory cap enforced (`CONFIG GET maxmemory` returns `268435456`).
 
 ---
 
@@ -479,6 +451,55 @@ The earlier plan considered `profiles: [dev]` to gate port publishing. That appr
 
 ---
 
+### Task 11b: Rewire `MINIO_EXTERNAL_ENDPOINT` for direct pass-through
+
+**Story Points**: 1
+
+**Description**
+
+Today the root `docker-compose.yml` composes `MINIO_EXTERNAL_ENDPOINT` from two other env vars:
+
+```yaml
+- MINIO_EXTERNAL_ENDPOINT=${HOST_IP:-localhost}:${MINIO_HOST_PORT:-9000}
+```
+
+This works on the laptop (where `HOST_IP=localhost` and `MINIO_HOST_PORT=9000` produce `localhost:9000`), but it is wrong for production. On the Hetzner box, presigned download URLs must embed `download.follow.example` with no port (Caddy routes that hostname to the internal MinIO on 9000, and the public entry point is port 443 via TLS). With the current interpolation, setting `HOST_IP=download.follow.example` and leaving `MINIO_HOST_PORT=9000` produces `download.follow.example:9000` — unreachable from the public internet — and there is no knob to emit a bare host.
+
+Verified against the Go MinIO SDK (`follow-api/internal/infrastructure/storage/storage.go:59-90`): `minio.New(endpoint, ...)` accepts a bare hostname and infers the port from the `Secure` option (443 when `UseSSL=true`). So the correct production value is literally `download.follow.example`, no colon, no port.
+
+**Action**: change the interpolation to pass `MINIO_EXTERNAL_ENDPOINT` through directly, with a laptop-safe default.
+
+```yaml
+- MINIO_EXTERNAL_ENDPOINT=${MINIO_EXTERNAL_ENDPOINT:-localhost:9000}
+```
+
+Update `.env.example` to document both values:
+
+```bash
+# Host embedded in presigned MinIO URLs. On the laptop this must
+# include the port (Docker publishes MinIO on :9000). On the
+# Hetzner box, set this to the public download hostname with NO
+# port and set MINIO_USE_SSL=true — the MinIO SDK will infer 443.
+#   Laptop:   MINIO_EXTERNAL_ENDPOINT=localhost:9000
+#   Hetzner:  MINIO_EXTERNAL_ENDPOINT=download.follow.example
+MINIO_EXTERNAL_ENDPOINT=localhost:9000
+```
+
+Do NOT delete `HOST_IP` — it is still used elsewhere (e.g., `GATEWAY_BASE_URL` interpolation at `docker-compose.yml:134`). Only `MINIO_EXTERNAL_ENDPOINT` switches to direct pass-through.
+
+**Files Affected**
+
+- `docker-compose.yml` — line ~125, replace composed value with direct pass-through.
+- `.env.example` — add `MINIO_EXTERNAL_ENDPOINT` with laptop default and comment explaining the prod value.
+
+**Acceptance Criteria**
+
+- Laptop `docker compose up -d` with no `.env` override still produces presigned URLs rooted at `http://localhost:9000/` (unchanged behavior).
+- `docker compose config` shows `MINIO_EXTERNAL_ENDPOINT` resolving from `.env` without the `HOST_IP:PORT` concatenation.
+- With `MINIO_EXTERNAL_ENDPOINT=download.follow.example` and `MINIO_USE_SSL=true` set in `.env`, follow-api emits presigned URLs that start with `https://download.follow.example/` (verified in Task 35 against the live box).
+
+---
+
 ### Task 12: Add backup sidecar service under `profiles: [prod]`
 
 **Story Points**: 2
@@ -487,16 +508,30 @@ The earlier plan considered `profiles: [dev]` to gate port publishing. That appr
 
 Add a backup container that runs on a cron, dumps postgres, mirrors MinIO to Cloudflare R2, and prunes old backups. Alpine base + `postgresql17-client` + `mc` (MinIO client). Mounted script handles the work.
 
-Build the backup container from a tiny dedicated Dockerfile with `postgresql17-client`, `minio-client`, and `tzdata` baked in. Do NOT `apk add` at container startup — that reinstalls packages on every restart, depends on Alpine mirrors being reachable from the running service, and is fragile by design. Fix at the root: ship a proper image.
+Build the backup container from a tiny dedicated Dockerfile with `postgresql17-client` and `mc` baked in. Do NOT `apk add` at container startup — that reinstalls packages on every restart, depends on Alpine mirrors being reachable from the running service, and is fragile by design. Fix at the root: ship a proper image.
+
+**`mc` version pinning** matters: Alpine's `minio-client` package tracks upstream and shifts with every rebuild, which means `mc mirror` flag semantics can drift between redeploys without a code change. Download a specific MinIO Client release directly from `https://dl.min.io/client/mc/release/linux-amd64/` instead, pinned to a known-good build. `postgresql17-client` is pinned via the Alpine base version itself (`alpine:3.21` locks the package repo snapshot).
 
 ```dockerfile
 # scripts/backup.Dockerfile
 FROM alpine:3.21
-RUN apk add --no-cache postgresql17-client minio-client tzdata
+
+# Pin MC_RELEASE to a known-good MinIO Client build. Bump explicitly
+# when a newer version is validated — never implicitly via apk.
+ARG MC_RELEASE=RELEASE.2025-01-17T23-25-50Z
+
+RUN apk add --no-cache postgresql17-client tzdata ca-certificates curl \
+ && curl -fsSL "https://dl.min.io/client/mc/release/linux-amd64/archive/mc.${MC_RELEASE}" \
+      -o /usr/local/bin/mc \
+ && chmod +x /usr/local/bin/mc \
+ && apk del curl
+
 COPY scripts/backup.sh /usr/local/bin/backup.sh
 RUN chmod +x /usr/local/bin/backup.sh
 ENTRYPOINT ["/bin/sh", "-c", "/usr/local/bin/backup.sh install-cron && exec crond -f -d 8 -L /dev/stdout"]
 ```
+
+The `ARG MC_RELEASE` default can be overridden at build time (`docker compose --profile prod build --build-arg MC_RELEASE=RELEASE.YYYY-MM-DDTHH-MM-SSZ backup`) when a new version is validated. Treat version bumps as code changes.
 
 ```yaml
 backup:
@@ -548,6 +583,7 @@ backup:
 - Container stays healthy (cron loop running).
 - Manual `docker compose --profile prod exec backup /usr/local/bin/backup.sh run-now` succeeds end-to-end.
 - `docker compose --profile prod exec backup which pg_dump mc` returns both binaries (proves they're baked in, not installed on start).
+- `docker compose --profile prod exec backup mc --version` returns the pinned `MC_RELEASE` tag from the Dockerfile (proves the binary is the pinned download, not the drifting Alpine package).
 
 ---
 
@@ -565,8 +601,39 @@ Two-mode script:
    - `mc alias set r2 $R2_ENDPOINT $R2_ACCESS_KEY $R2_SECRET_KEY`
    - `mc alias set local http://minio:9000 $MINIO_ACCESS_KEY_ID $MINIO_SECRET_ACCESS_KEY`
    - `mc mirror --overwrite local/follow-images r2/$R2_BACKUP_BUCKET/minio/follow-images/`
+   - **Back up the encrypted `.env` file** (see "Encrypted `.env` backup" below) — upload to `r2://$R2_BACKUP_BUCKET/env/YYYY-MM-DD-HHMMSS.env.age`.
    - After all steps succeed, write a last-success timestamp to `r2://$R2_BACKUP_BUCKET/_last_success.txt` for Task 34 monitoring.
    - Log success/failure to stdout (caught by Docker logging driver).
+
+**Encrypted `.env` backup**:
+
+The `.env` file on the Hetzner box holds every production secret: `JWT_SECRET`, the Ed25519 keypair, `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `R2_*` credentials. The postgres + MinIO mirror backups are useless if the host is destroyed and the secrets are lost — JWTs issued before the incident can't be verified, the restored MinIO bucket can't be unlocked, and the pilot customer is effectively locked out. The password manager is the primary source of truth (Task 23 / Task 28 both require it), but a machine-readable backup that's always in sync with what's actually running on the box is cheap insurance.
+
+Use `age` (small, simple, no key management ceremony) for symmetric encryption with a passphrase known only to the operator and stored in the password manager. Add `age` to `scripts/backup.Dockerfile`:
+
+```dockerfile
+# In backup.Dockerfile, alongside the existing apk add line
+RUN apk add --no-cache age
+```
+
+In `backup.sh`, before uploading:
+
+```bash
+# AGE_PASSPHRASE is a container env var sourced from the host .env
+# (circular, but intentional — the operator types it in once and it
+# never leaves the box unencrypted).
+age --passphrase \
+    -o /tmp/env-backup.age \
+    /backup-src/.env \
+  < <(printf '%s\n%s\n' "$AGE_PASSPHRASE" "$AGE_PASSPHRASE")
+mc cp /tmp/env-backup.age \
+    "r2/${R2_BACKUP_BUCKET}/env/$(date -u +%Y-%m-%d-%H%M%S).env.age"
+shred -u /tmp/env-backup.age
+```
+
+The `.env` file must be mounted read-only into the backup container at `/backup-src/.env` (update the `backup` service's `volumes:` block in Task 12 to add `- ./.env:/backup-src/.env:ro`). `AGE_PASSPHRASE` is itself an env var declared in `.env` — the operator sets it when provisioning the box (Task 28) and records it in the password manager alongside the other secrets.
+
+**Recovery procedure** (document in the runbook, Task 38): download the latest `env/*.age` from R2, `age --decrypt -o .env.recovered env-backup.age` (prompts for the passphrase from the password manager), compare to any stale version the operator still has, place on the new box, `chmod 600`.
 
 Use `set -euo pipefail`. Exit non-zero on any failure so the container restarts and the failure is visible in logs/monitoring.
 
@@ -596,8 +663,10 @@ Document the switch criteria and decision tree in the runbook (Task 38) so futur
 - `bash -n scripts/backup.sh` passes.
 - `shellcheck scripts/backup.sh` passes.
 - `run-now` mode works end-to-end against laptop postgres + MinIO + a real R2 bucket.
-- `_last_success.txt` is written only on full success (not on partial failure).
-- Runbook (Task 38) contains the "when to switch from full mirror to incremental" decision criteria above.
+- `r2://$R2_BACKUP_BUCKET/env/<timestamp>.env.age` exists after a successful run and is decryptable with the stored passphrase.
+- Decryption test: `age --decrypt env-backup.age` against the latest uploaded file recovers the exact bytes of the original `.env` (verified with `diff`).
+- `_last_success.txt` is written only on full success (not on partial failure), meaning a failed `.env` backup must also prevent the last-success ping.
+- Runbook (Task 38) contains the "when to switch from full mirror to incremental" decision criteria above AND the `.env` recovery procedure.
 
 ---
 
@@ -615,6 +684,12 @@ R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 R2_ACCESS_KEY=<r2-access-key>
 R2_SECRET_KEY=<r2-secret-key>
 R2_BACKUP_BUCKET=follow-backups
+
+# ── .env backup encryption ───────────────────────────────────────
+# Passphrase used by `age` to encrypt the .env file before pushing
+# it to R2 (Task 13). Store this value in the password manager
+# alongside the other production secrets. Never commit a real value.
+AGE_PASSPHRASE=<long-random-passphrase>
 ```
 
 **Files Affected**
@@ -623,8 +698,9 @@ R2_BACKUP_BUCKET=follow-backups
 
 **Acceptance Criteria**
 
-- Variables added with placeholder values.
+- `R2_*` and `AGE_PASSPHRASE` variables added with placeholder values.
 - Comment explains where to find R2 credentials in the Cloudflare dashboard.
+- Comment explains that `AGE_PASSPHRASE` must be preserved in the password manager and is the only way to decrypt the `.env` backups in R2.
 
 ---
 
@@ -674,7 +750,7 @@ docker compose logs caddy  # caddy boots, tries to issue certs (will fail locall
 docker compose logs backup # cron loop running
 ```
 
-For local cert testing, override the Caddyfile temporarily to use Caddy's `tls internal` directive (self-signed). Don't commit that change — it's a one-time local sanity check.
+For local cert testing, override the Caddyfile temporarily to use Caddy's `tls internal` directive (self-signed). Don't commit that change — it's a one-time local sanity check. Note: `tls internal` issues a cert chained to Caddy's private CA that browsers won't trust, so `curl -k` is required and the Flutter web client may refuse to connect. If you need a browser-trusted local cert (for the SSE verification in Task 22), install [`mkcert`](https://github.com/FiloSottile/mkcert) and mount the generated cert into the Caddy container instead of using `tls internal`.
 
 **Acceptance Criteria**
 
@@ -745,19 +821,38 @@ Small set of code changes to make the apps aware of the new domain layout.
 
 **Description**
 
-The CORS middleware in `follow-api` currently allows fly.io and laptop origins. Add the new Pages domain (`https://app.follow.example`). Find the config: search `internal/api/middleware/` and `configs/config.yaml` for the existing CORS allow-list.
+The CORS allow-list in `follow-api/configs/config.yaml:68-70` is currently a single comma-separated string with only the laptop dev origin:
 
-Make sure SSE preflight headers are also covered — `/api/v1/routes/{id}/status/stream` is the most CORS-sensitive endpoint.
+```yaml
+cors:
+  allowed_origins: "http://localhost:3000"
+  max_age: 3600
+```
+
+There is no fly.io origin to remove — the fly.io deployment currently relies on this narrow allow-list and the browser never enforces CORS there because the Flutter app and the API are on the same origin today. Adding Cloudflare Pages as the client origin is a new concern that CORS will now enforce for real.
+
+**Action**: extend the allow-list to include the production Pages hostname:
+
+```yaml
+cors:
+  allowed_origins: "http://localhost:3000, https://app.follow.example"
+  max_age: 3600
+```
+
+The parser at `follow-api/internal/api/server/goa_server.go:585-587` (`parseAllowedOrigins`) splits on commas and trims whitespace, so either comma-separated form works. Keep `http://localhost:3000` — the Flutter web dev build still needs it.
+
+**SSE preflight** is the most CORS-sensitive endpoint (`/api/v1/routes/{id}/status/stream`). Browsers send an `OPTIONS` preflight before opening an EventSource connection, and the response must include `Access-Control-Allow-Origin` matching the Pages hostname and `Access-Control-Allow-Credentials: true` if the stream carries an auth cookie/header. Verify end-to-end in Task 22.
 
 **Files Affected**
 
-- `follow-api/configs/config.yaml` (or wherever the allow-list lives)
-- Possibly `follow-api/internal/api/middleware/cors.go`
+- `follow-api/configs/config.yaml` (line ~70 — the single `allowed_origins` string)
+- `follow-api/internal/api/server/cors_middleware_test.go` — add a test case that includes the Pages origin so regressions are caught
 
 **Acceptance Criteria**
 
-- New origin in the allow-list.
+- `cors.allowed_origins` in `config.yaml` contains `https://app.follow.example`.
 - A browser fetch from `https://app.follow.example` to `https://api.follow.example/api/v1/users/anonymous` succeeds with correct CORS headers (test in Phase 5).
+- SSE handshake from the Pages origin to `https://api.follow.example/api/v1/routes/{id}/status/stream` succeeds (verified in Task 22 locally, Task 35 in prod).
 - `go test -race -cover ./...` still passes.
 
 ---
@@ -768,23 +863,37 @@ Make sure SSE preflight headers are also covered — `/api/v1/routes/{id}/status
 
 **Description**
 
-Search `follow-app/` for any references to fly.io URLs and replace them with the new Hetzner-backed hostnames. Likely locations:
+The Flutter app reads `api_base_url` at startup from a JSON config file selected by the build flavor — see `follow-app/lib/config/config_service.dart:193,214,289`. The current hardcoded fly.io URLs live in the config JSON files, not in Dart source, so this is a config edit, not a code edit.
 
-- `lib/data/network/` or similar
-- `lib/core/config/`
-- `.env` files for the Flutter build
-- Any hardcoded base URLs in service classes
+**Files to update** (verified via grep):
 
-Use `grep -r 'fly.dev' follow-app/` (via the Grep tool) to catch them all.
+| File | Current value | New value |
+|------|---------------|-----------|
+| `follow-app/assets/config/config.json` | `https://follow-api.fly.dev` | `https://api.follow.example` |
+| `follow-app/assets/config/config.production.json` | `https://follow-api.fly.dev` | `https://api.follow.example` |
+| `follow-app/assets/config/config.development.json` | `http://192.168.68.55:18080` | leave as-is (local dev only) |
+| `follow-app/assets/config/config.staging.json` | `https://staging-api.follow.app` | leave as-is — staging flavor is unused per project decision |
+
+The upload and download hostnames are NOT read from this config today — the Flutter app reads upload URLs out of the API response and download URLs out of the presigned MinIO URLs embedded in the route payload. As long as follow-api's `MINIO_EXTERNAL_ENDPOINT` and `GATEWAY_BASE_URL` are correct on the box (Task 28), the app will follow them automatically. No hardcoded upload or download host needs to change in the Flutter codebase.
+
+After the JSON swap, grep the whole repo one more time to catch any accidental stragglers:
+
+```bash
+# via the Grep tool
+fly\.dev    # expect zero matches in follow-app/
+fly\.io     # expect zero matches in follow-app/
+```
 
 **Files Affected**
 
-- TBD — depends on grep results
+- `follow-app/assets/config/config.json`
+- `follow-app/assets/config/config.production.json`
 
 **Acceptance Criteria**
 
-- Zero references to `fly.dev` remain in `follow-app/`.
-- Build configuration uses environment-specific base URLs (so dev still works against localhost).
+- Zero references to `fly.dev` or `fly.io` remain anywhere in `follow-app/` (except historical references in `ai-docs/planning/completed/`, which are intentional snapshots of past work).
+- `config.development.json` still points at the local dev API (unchanged).
+- `config.staging.json` unchanged (unused flavor — project decision, do not touch).
 - `flutter analyze` returns no errors.
 - `flutter test` passes.
 
@@ -874,13 +983,15 @@ Pick a server size at Hetzner Cloud. For MVP+ with one pilot customer:
 
 Realistic RAM budget for the full stack (postgres ~1-2GB, image-gateway ~200-500MB with ML models loaded, follow-api ~50-100MB, valkey ~50-100MB, MinIO ~200-300MB, OS+Docker ~500MB) totals ~3-4GB at MVP traffic. The CPU-bursty workload is the gateway's image pipeline (libvips + ONNX inference) which runs in short bursts during route creation, then idles for hours.
 
+**Reconcile against Task 6 resource limits before picking a size**. The per-service memory caps in Task 6 sum to ~3.8GB (1.0 + 0.384 + 0.768 + 0.512 + 1.0 + 0.128). On a 4GB box that leaves ~200MB for the OS, Docker daemon, and kernel buffers — any burst that pushes a service near its limit plus normal OS overhead will trigger the host OOM killer and kill the offender (or worse, postgres) instead of the kernel politely refusing the container's allocation. **Default to CPX31** unless you have a strong reason to save the ~€3/month.
+
 Prefer the **CPX line (AMD EPYC)** over the CX line (Intel) — at the same price point, CPX gives more vCPUs and is better for the gateway's CPU-bursty workload.
 
-- **CPX21** (3 vCPU AMD shared, 4GB RAM, 80GB SSD) — ~€8/month. Right-sized for MVP. Live-resizable to CPX31 with one click if image processing becomes a bottleneck.
-- **CPX31** (4 vCPU AMD shared, 8GB RAM, 160GB SSD) — ~€11/month. Comfortable headroom; pick this if you want to size up once and not think about it.
+- **CPX31** (4 vCPU AMD shared, 8GB RAM, 160GB SSD) — ~€11/month. **Default recommendation**. Leaves ~4GB of headroom over the Task 6 limit sum, which absorbs postgres shared buffers, Linux page cache, and docker build scratch space without OOMing. Pick this and stop thinking about RAM sizing.
+- **CPX21** (3 vCPU AMD shared, 4GB RAM, 80GB SSD) — ~€8/month. Only viable if you *first* tighten Task 6 limits so the sum is ≤75% of RAM (~3GB). Otherwise the OOM headroom disappears. Live-resizable to CPX31 with one click if it turns out to be too tight.
 - **CCX13** (2 vCPU dedicated, 8GB RAM) — only if pipeline benchmarks show actual sustained vCPU contention on shared CPUs. Roughly 2-3x the price for guaranteed cores. Skip unless evidence demands it.
 
-Shared vCPU is fine for this workload: bursts are seconds long, the rest of the day is idle. Hetzner allows live resizing of CPX instances, so start small and scale up only if observed load demands it.
+Shared vCPU is fine for this workload: bursts are seconds long, the rest of the day is idle. Hetzner allows live resizing of CPX instances, so you can always size up in minutes if the box is too tight.
 
 Pick a location close to the pilot customer (Hetzner has Falkenstein/Nuremberg in Germany and Helsinki in Finland for EU; Ashburn for US).
 
@@ -923,7 +1034,18 @@ Basic security hygiene before anything sensitive lands on the box.
    - `sudo ufw enable`
 5. Install `unattended-upgrades` for automatic security patches.
 6. Set timezone to UTC (`timedatectl set-timezone UTC`).
-7. Optional but recommended: install `fail2ban` for SSH brute-force protection.
+7. Optional but recommended: install `fail2ban` for SSH brute-force protection. Minimal viable config: `sudo apt install fail2ban`, then drop a one-file jail at `/etc/fail2ban/jail.d/sshd.local`:
+
+   ```ini
+   [sshd]
+   enabled = true
+   backend = systemd
+   bantime = 1h
+   findtime = 10m
+   maxretry = 5
+   ```
+
+   Restart with `sudo systemctl restart fail2ban` and verify with `sudo fail2ban-client status sshd`. Don't touch the default `jail.conf` — the `.local` overlay is the only thing you should edit. This alone covers 99% of SSH brute-force noise; skip custom filters, custom actions, and anything in `fail2ban.conf`.
 
 **Test the hardened SSH config from a SECOND terminal BEFORE closing the original session** — if key auth is misconfigured you will be locked out and must recover via the Hetzner web console.
 
@@ -1010,13 +1132,18 @@ Create `/home/follow/follow/.env` with REAL production values. NEVER committed. 
 # - Strong unique passwords for POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, etc.
 # - Real JWT_SECRET and Ed25519 keypair from Task 23
 # - Real R2_* credentials from Task 15
+# - Real AGE_PASSPHRASE for .env backup encryption (Task 13/14)
 #
-# Hostname-related vars that must point at the public hostnames, NOT localhost:
+# Hostname-related vars (thanks to Task 11b rewiring, MINIO_EXTERNAL_ENDPOINT
+# is now a direct pass-through — set it to the bare host with NO port; the
+# MinIO SDK infers 443 from MINIO_USE_SSL=true):
 # - MINIO_EXTERNAL_ENDPOINT=download.follow.example      (presigned download URLs)
 # - MINIO_USE_SSL=true                                    (HTTPS via Caddy)
 # - GATEWAY_BASE_URL=https://upload.follow.example        (presigned upload URLs)
-# - HOST_IP=<hetzner-public-ipv4>                         (still useful for docker-compose
-#                                                          variable fallbacks)
+# - HOST_IP=<hetzner-public-ipv4>                         (still used for
+#                                                          GATEWAY_BASE_URL
+#                                                          fallback interpolation
+#                                                          — leave populated)
 #
 # POSTGRES_SSLMODE=disable is correct — postgres stays on the internal
 # docker network, all traffic stays on the box, no TLS needed.
@@ -1027,11 +1154,13 @@ chown follow:follow /home/follow/follow/.env
 
 **Acceptance Criteria**
 
-- File exists with all required vars from `.env.example`.
+- File exists with all required vars from `.env.example`, including `AGE_PASSPHRASE`.
 - Permissions are `600`, owner `follow:follow`.
 - `cat .env` as any other user fails.
 - File is in `.gitignore` (verify it does not appear in `git status`).
-- `MINIO_EXTERNAL_ENDPOINT`, `MINIO_USE_SSL=true`, and `GATEWAY_BASE_URL` all reference the production hostnames with `https://` scheme.
+- `MINIO_EXTERNAL_ENDPOINT=download.follow.example` (bare host, no port, no scheme), `MINIO_USE_SSL=true`, and `GATEWAY_BASE_URL=https://upload.follow.example` all set correctly.
+- `docker compose config` renders the MinIO service with `MINIO_EXTERNAL_ENDPOINT=download.follow.example` (proves Task 11b pass-through is doing its job).
+- Every secret in `.env` also exists in the password manager verbatim. The file itself is encrypted and backed up to R2 (Task 13), but the password manager is the authoritative human-usable copy.
 
 ---
 
@@ -1107,15 +1236,18 @@ docker compose logs -f --tail=100
 
 Watch the logs for the first 60-90 seconds. Postgres needs to initialize, `follow-api` runs its migrations on startup, valkey/MinIO come up, app services join the network, Caddy starts requesting certs. Anything failing here is almost always an env var typo or a port collision.
 
-**Note on build time**: The first `docker compose build` for `follow-image-gateway` takes 10-15 minutes on a CPX21 because the Dockerfile builds libvips 8.18 from source and downloads ONNX Runtime. This is not a hang — tail `docker compose logs follow-image-gateway` or watch the build output. If you want to skip this on-box build entirely, build the image locally on your laptop and ship it:
+**Build the images on the laptop, not on the box** (recommended path): the first `docker compose build` for `follow-image-gateway` takes 10-15 minutes on a CPX21/CPX31 because the Dockerfile builds libvips 8.18 from source and downloads ONNX Runtime. Every subsequent redeploy pays the same cost if anything in the base layers changes. Build on the laptop (fast CI-grade hardware, cached layers) and ship the image directly to the box — this turns each redeploy from ~15 minutes of on-box build + deploy into ~1 minute of `docker load` + deploy.
 
 ```bash
-# On laptop
+# On laptop — do this BEFORE the first deploy and on every redeploy
 docker compose build follow-image-gateway follow-api
 docker save follow-image-gateway:latest follow-api:latest | \
   ssh follow@<hetzner-ip> 'docker load'
-# Then on the box, use `docker compose up -d` (not `up -d --build`)
 ```
+
+Then on the box, run `docker compose --profile prod up -d` **without** `--build`. The images are already loaded from the laptop transfer, and compose will use them as-is. The runbook (Task 38) should promote this as the default redeploy procedure.
+
+If you do decide to build on the box anyway (first-time experimentation, laptop offline), tail the build output or `docker compose logs follow-image-gateway` — the 10-15 minute wait is not a hang.
 
 **Migration safety**: On the FIRST deploy the database is empty and migrations apply cleanly. On every SUBSEQUENT redeploy that touches migrations (see runbook in Task 38), take a postgres backup BEFORE running `docker compose up -d --build` so a failed migration can be rolled back by restoring the dump. Add a line to the runbook: "Never redeploy a migration-touching change without a fresh backup in hand."
 
@@ -1179,7 +1311,7 @@ The cross-repo integration tests in `tests/integration/` should be runnable agai
 1. Skip the infra-level tests and run only the HTTP/API-level ones that don't need direct DB/Valkey/MinIO access, OR
 2. Fix the harness to separate "API flow tests" (remote-safe) from "infrastructure tests" (local-only), then run only the remote-safe subset.
 
-This pre-flight is the reason Task 33 can balloon — don't discover the hardcoded localhost while pointing at production. Find out in advance by reading `tests/integration/main_test.go` and config setup.
+This pre-flight is the reason Task 33 can balloon — don't discover the hardcoded localhost while pointing at production. Start by reading `tests/integration/main_test.go` and the test harness bootstrap files alongside it (config loaders, shared test fixtures) to map which tests touch only HTTP endpoints versus which tests reach into postgres/valkey/MinIO directly. Grep for `localhost`, `postgres:`, `valkey:`, `minio:` inside `tests/integration/` — every hit is a potential remote-unsafe test.
 
 Even just the minimum end-to-end flow — anonymous user creation → route creation → image upload → SSE status streaming → published route → image download — catches most deployment issues without needing full infra access.
 
@@ -1224,6 +1356,41 @@ Options A and B are both cheap and correct. Pick one.
 - Next-morning cron run succeeds (verified by R2 object timestamp).
 - Backup logs visible via `docker compose logs backup`.
 - Failure alerting in place: intentionally break the backup (e.g., wrong R2 credentials temporarily) and confirm an alert arrives within the configured window, then fix and re-run.
+
+---
+
+### Task 34b: Hetzner snapshot restore drill
+
+**Story Points**: 1
+
+**Description**
+
+Task 30 enables Hetzner Automated Backups and Task 38 documents the restore procedure, but the restore path itself is never exercised. "The dashboard has a Restore button" is not the same as "we verified the snapshot actually boots, the stack comes up clean, and the data is intact." Run the drill once, on a throwaway box, before declaring the platform production-ready. This is the snapshot equivalent of Task 19 (R2 restore drill).
+
+Prerequisites: Task 30 is done AND at least one automated snapshot has been taken (Hetzner's first nightly snapshot lands within 24 hours of enabling backups). Verify a snapshot exists in the dashboard before starting.
+
+Process:
+
+1. In the Hetzner Cloud dashboard, locate the most recent automated snapshot.
+2. Click "Restore" → choose "Restore to a new server" (NOT "Restore to this server" — never overwrite the live box).
+3. Pick the smallest size that still fits the stack (CPX21 is fine for a 10-minute test) and a location — doesn't matter which. Name it `follow-snapshot-drill`.
+4. Wait for the new box to boot (~2-3 minutes).
+5. SSH in as the `follow` user (keys from the snapshot carry over).
+6. `docker compose --profile prod ps` — expect everything to come up `Up (healthy)` without any manual intervention. If services need any reconfiguration, the snapshot restore is effectively broken and that's a finding worth capturing in the runbook.
+7. Smoke-test: `curl -k https://localhost/health` (or point `/etc/hosts` at the throwaway box and `curl` by hostname). Hit each service's health endpoint.
+8. Spot-check a few database rows and MinIO objects exist — `docker compose exec postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB" -c 'SELECT count(*) FROM routes;'` and `docker compose exec minio mc ls local/follow-images | head`.
+9. Delete the throwaway box from the Hetzner dashboard.
+
+Cost: roughly €0.02-0.05 for the ~30 minutes the test box exists. Negligible.
+
+**Acceptance Criteria**
+
+- Snapshot restore produces a running box without manual reconfiguration.
+- All services reach healthy state.
+- Smoke-test health endpoints return 200.
+- Database and MinIO row/object counts are plausible (non-zero, match source within a few minutes of drift).
+- Throwaway box deleted after verification — no lingering infrastructure.
+- Runbook (Task 38) updated with any quirks discovered during the drill (e.g., "after restore, the Caddy cert cache may trigger a fresh ACME request on first boot" — whatever actually happens on your stack).
 
 ---
 
@@ -1313,6 +1480,36 @@ Minimal viable monitoring for one box. Everything below is push-based or pull-fr
 
    Configure the healthchecks.io check with a 15-minute period + 30-minute grace. No MTA setup required; alerts come from healthchecks.io by email (and optionally Slack/SMS/webhook).
 
+3. **Certificate expiry early-warning check** — UptimeRobot only tells you the cert is broken *after* it expires (the HTTPS check starts failing). Caddy auto-renews 30 days before expiry, but silent renewal failures (Cloudflare DNS hiccup during HTTP-01, Let's Encrypt rate limit, corrupted cert store) won't surface until the cert is actually dead. A daily cert-expiry probe catches that window.
+
+   Add a second healthchecks.io check ("cert-expiry") with a 1-day period + 2-day grace, and a daily cron on the box:
+
+   ```bash
+   # /etc/cron.d/follow-cert-check — runs daily at 04:00 UTC
+   0 4 * * * follow /usr/local/bin/cert-check.sh
+   ```
+
+   ```bash
+   # /usr/local/bin/cert-check.sh
+   #!/bin/sh
+   set -eu
+   HOSTS="api.follow.example upload.follow.example download.follow.example"
+   MIN_DAYS=15
+   NOW=$(date -u +%s)
+   for host in $HOSTS; do
+     END=$(echo | openssl s_client -servername "$host" -connect "$host":443 2>/dev/null \
+       | openssl x509 -noout -enddate 2>/dev/null \
+       | sed 's/notAfter=//')
+     [ -z "$END" ] && exit 1  # probe failed
+     END_EPOCH=$(date -u -d "$END" +%s 2>/dev/null) || exit 1
+     DAYS_LEFT=$(( (END_EPOCH - NOW) / 86400 ))
+     [ "$DAYS_LEFT" -lt "$MIN_DAYS" ] && exit 1  # cert too close to expiry
+   done
+   curl -fsS -m 10 --retry 3 "https://hc-ping.com/<cert-check-uuid>" > /dev/null
+   ```
+
+   The script exits 0 (and pings) only when ALL three production hostnames have ≥15 days of validity remaining. Any probe failure, parse failure, or too-close-to-expiry cert causes the ping to be skipped, and healthchecks.io alerts via its grace window.
+
 Future (post-MVP): Grafana Cloud free tier scrapes Prometheus metrics from `follow-api`'s `/health/metrics` endpoint. Out of scope for this plan.
 
 **Acceptance Criteria**
@@ -1321,6 +1518,7 @@ Future (post-MVP): Grafana Cloud free tier scrapes Prometheus metrics from `foll
 - Test alert verified (intentionally take a service down, confirm alert received).
 - Backup alert verified per Task 34 (break backup temporarily, confirm alert fires).
 - healthchecks.io disk-check wired up; intentionally fill the disk past 85% in a throwaway test (or stop the cron) and confirm the "missing ping" alert fires within the grace window.
+- healthchecks.io cert-expiry check wired up; test by temporarily setting `MIN_DAYS` to 999 in the script (guaranteed to fail) and confirm the alert fires within the grace window.
 
 ---
 
@@ -1338,8 +1536,12 @@ Write `ai-docs/operations/hetzner-runbook.md` (new file). Contents:
   - `docker system prune -a --volumes` — same hazard, explicit.
   - `git checkout -- .` / `git reset --hard` on the box — can wipe uncommitted `.env` changes or local patches.
 - **Box access**: SSH command, where keys live, how to reset SSH access if locked out.
-- **Deploy / redeploy (no migrations)**: `git pull && docker compose --profile prod up -d --build`.
-- **Deploy / redeploy (migrations present)**: MANDATORY procedure — (1) trigger backup `docker compose --profile prod exec backup /usr/local/bin/backup.sh run-now` and verify the new dump exists in R2, (2) then `git pull && docker compose --profile prod up -d --build`, (3) verify `follow-api` logs show successful migration, (4) smoke-test the health endpoint. If migration fails, rollback procedure: stop services, restore the latest dump, `git checkout <prev-commit>`, bring up the previous version.
+- **Deploy / redeploy — DEFAULT PATH (laptop-built images)**:
+  1. On the laptop: `docker compose build follow-image-gateway follow-api`
+  2. `docker save follow-image-gateway:latest follow-api:latest | ssh follow@<hetzner-ip> 'docker load'`
+  3. On the box: `cd /home/follow/follow && git pull && docker compose --profile prod up -d` (NO `--build` — images were already loaded). This is the primary procedure because it avoids the 10-15 minute on-box libvips rebuild on every redeploy.
+- **Deploy / redeploy — FALLBACK PATH (on-box build)**: only when the laptop is unavailable. `git pull && docker compose --profile prod up -d --build`. Expect ~15 minutes.
+- **Deploy / redeploy (migrations present)**: MANDATORY procedure — (1) trigger backup `docker compose --profile prod exec backup /usr/local/bin/backup.sh run-now` and verify the new dump exists in R2, (2) then the default or fallback redeploy path above, (3) verify `follow-api` logs show successful migration, (4) smoke-test the health endpoint. If migration fails, rollback procedure: stop services, restore the latest dump, `git checkout <prev-commit>`, bring up the previous version.
 - **Logs**: where they live, how to tail, how to grep for errors, how rotation works. Note: `docker compose down` stops containers but preserves volumes — safe. `docker compose down -v` is the destructive variant — never run.
 - **Restart a single service**: `docker compose restart follow-api`.
 - **Update the Caddyfile**: edit, reload with `docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile`.
@@ -1348,16 +1550,22 @@ Write `ai-docs/operations/hetzner-runbook.md` (new file). Contents:
   - **Logical bug (dropped table, deleted objects, bad data)** → use the R2 logical backup. Fast, surgical, preserves the rest of the host. Reference `scripts/RESTORE.md`.
   - **Whole host broken (filesystem corruption, failed OS upgrade, compromised box, rm -rf wrong dir)** → restore the Hetzner snapshot (Task 30). Fast (minutes), brings everything back atomically. After restore, verify `docker compose --profile prod up -d` boots clean and run a smoke test.
   - **Hetzner datacenter lost the disk entirely** → provision new box, follow Phase 4 from scratch, restore from R2. This is the worst case — expect hours of work.
-- **Restore from R2 backup (logical)**: full procedure (postgres + MinIO, with the exact mc and pg_restore commands). Reference `scripts/RESTORE.md` from Task 19.
-- **Restore from Hetzner snapshot**: dashboard procedure (select server → Backups tab → Restore). Note: rolls back the entire host to the snapshot time, including any config or code changes made after that snapshot. After restore, `git pull` to re-apply any newer committed changes and `docker compose --profile prod up -d`.
+- **Restore from R2 backup (logical)**: full procedure (postgres + MinIO + encrypted `.env`, with the exact `mc`, `pg_restore`, and `age --decrypt` commands). Reference `scripts/RESTORE.md` from Task 19.
+- **Recover `.env` from encrypted backup** (from Task 13/14):
+  1. `mc cp r2/<bucket>/env/<latest>.env.age ./env-backup.age`
+  2. `age --decrypt -o .env.recovered env-backup.age` (prompts for `AGE_PASSPHRASE` — copy from password manager).
+  3. `diff .env.recovered <current-env-on-box>` to confirm nothing unexpected diverged.
+  4. `chmod 600 .env.recovered && mv .env.recovered .env` on the target box.
+- **Restore from Hetzner snapshot**: dashboard procedure (select server → Backups tab → Restore). Note: rolls back the entire host to the snapshot time, including any config or code changes made after that snapshot. After restore, `git pull` to re-apply any newer committed changes and `docker compose --profile prod up -d`. The drill for this exact procedure ran once during Task 34b — any quirks found there must be written down here.
 - **Emergency rollback**: `git checkout <prev-tag> && docker compose --profile prod up -d`. Note: if the rollback crosses a migration boundary, you must restore the database from a pre-migration dump FIRST — downgrading the app binary without downgrading the schema will break.
+- **`MINIO_EXTERNAL_ENDPOINT` quick reference** (from Task 11b): laptop dev uses `localhost:9000` (with port), Hetzner uses `download.follow.example` (no port, no scheme, with `MINIO_USE_SSL=true`). Editing this on the box requires a `docker compose up -d follow-api` restart to pick up the new value.
 - **When to switch MinIO backup from full mirror to incremental** (from Task 13):
   - Full `mc mirror` is fine up to ~10GB / ~5 min wall-clock.
   - Beyond that, switch to `mc mirror --newer-than` (incremental) or consider moving primary storage to R2 directly.
   - Document the current bucket size check: `docker compose exec minio mc du local/follow-images`.
-- **Common failure modes and their fixes**: cert renewal failure, postgres OOM, valkey memory exhaustion, gateway pipeline stalled, backup cron silently broken (check the last-success timestamp from Task 34), disk full (log rotation + MinIO bucket bloat).
+- **Common failure modes and their fixes**: cert renewal failure (check cert-expiry alert from Task 37, then `docker compose logs caddy` for ACME errors), postgres OOM, valkey memory exhaustion, gateway pipeline stalled, backup cron silently broken (check the `_last_success.txt` timestamp from Task 34), disk full (log rotation + MinIO bucket bloat), `.env` corruption (recover from encrypted R2 backup per the procedure above).
 
-Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in detail.
+Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in detail, including the `age --decrypt` step for the `.env` recovery.
 
 **Acceptance Criteria**
 
@@ -1376,13 +1584,13 @@ Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in de
 | Cloudflare Pages domain handshake forgotten | App serves the wrong response | Task 4 explicitly calls out the two-sided handshake; verified before Phase 5 |
 | Backup script silently broken | Customer data loss on host failure | Task 19 (restore drill) is mandatory and gates Phase 6; Task 34 adds failure alerting (last-success timestamp or healthchecks.io ping) |
 | First-deploy env var typo | Stack fails to boot | Task 17 (local prod profile test) catches this before touching Hetzner |
-| Postgres OOM under image processing load | DB crash, data loss risk | Task 6 (resource limits) caps everything; CPX21/CPX31 has headroom for MVP load, live-resizable if not |
+| Postgres OOM under image processing load | DB crash, data loss risk | Task 6 (resource limits) caps everything; Task 24 defaults to CPX31 (8GB) to stay well clear of the ~3.8GB limit-sum; CPX21 only acceptable if Task 6 limits are tightened first |
 | SSE long-lived connections die through Caddy | Status streaming broken in production | Task 22 verifies SSE locally through self-signed Caddy before Hetzner (includes Caddy buffering + idle timeout checks) |
 | ufw blocks port 80, Let's Encrypt HTTP-01 fails | Cert issuance fails | Task 25 explicitly opens 80 and 443 |
 | User locks themselves out via SSH hardening | Manual recovery via Hetzner console | Test the hardened SSH config from a SECOND terminal before closing the original session |
 | Failed migration on redeploy leaves DB in broken state | Partial outage, possible data loss | Task 31 + runbook (Task 38) mandate a pre-migration backup and document the rollback-via-restore procedure |
 | Accidental `docker compose down -v` wipes volumes | Total data loss | Runbook (Task 38) has a prominent "DANGER ZONE" section listing the destructive commands explicitly |
-| `follow-image-gateway` first build takes 10-15 min, looks hung | Wasted time or panicked abort mid-build | Task 31 documents the build time and the optional `docker save \| ssh docker load` escape hatch |
+| `follow-image-gateway` first build takes 10-15 min, looks hung | Wasted time or panicked abort mid-build | Task 31 promotes `docker save \| ssh docker load` as the DEFAULT redeploy path; on-box `--build` is the explicit fallback; runbook (Task 38) documents both |
 | Integration test harness hardcodes localhost | Task 33 blocked, needs harness rewrite mid-deploy | Task 33 pre-flight check reads `tests/integration/main_test.go` BEFORE running tests to identify remote-safe subset |
 | Host broken by bad command or failed OS upgrade, R2 restore is slow | Hours of downtime during recovery | Task 30 enables Hetzner Automated Backups — disk-level snapshots restore the whole box in minutes, complementary to the logical R2 backups |
 | Presigned download URL signature rejected (wrong host) | Images fail to download on production | Task 28 sets `MINIO_EXTERNAL_ENDPOINT=download.follow.example` and `MINIO_USE_SSL=true`; Task 35 verifies URLs contain the correct host |
@@ -1390,10 +1598,17 @@ Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in de
 | MinIO backup grows beyond viable full-mirror size | Nightly backup runtime balloons, R2 storage cost grows | Task 13 documents switch criteria (~10GB or ~5 min wall-clock) and alternative strategies; runbook (Task 38) surfaces the check command |
 | Caddy gated on upstream health, blocks cert renewal when app is down | Cert expires silently during any extended app outage | Task 9 uses start-order-only `depends_on`, not `condition: service_healthy`, so Caddy always binds :80 for ACME |
 | `mc mirror --remove` propagates a bad delete into R2 | Backup destroyed at the exact moment it is needed | Task 13 explicitly drops `--remove` and explains why; R2 lifecycle rule (Task 16) handles orphan cleanup instead |
-| Valkey restart loses in-flight image pipeline state | Routes stuck forever in PENDING, SSE never terminates | Task 8b enables AOF persistence with `appendfsync everysec` and `maxmemory-policy noeviction` |
+| Valkey persistence assumed rather than verified | Routes stuck forever in PENDING if AOF is actually off | Task 8 is a verify-and-polish pass with a mandatory kill-restart drill that exercises the config; assumption never left untested |
 | UFW configured for v4 only, IPv6 traffic reaches exposed ports | Loopback-bound services + UFW both bypassed on v6; public exposure of 8080/8090 | Task 25 sets `IPV6=yes` in `/etc/default/ufw` before adding rules; v6 deny verified from an outside box |
 | Backup container reinstalls packages on every restart | Fragile, slow, depends on Alpine mirror availability mid-service | Task 12 builds `scripts/backup.Dockerfile` with `pg_dump` and `mc` baked in; entrypoint only starts `crond` |
+| `mc` version drifts via Alpine package rebuilds | `mc mirror` flag semantics could change silently between redeploys | Task 12 pins `mc` to a specific `MC_RELEASE` downloaded from dl.min.io; bumps are explicit code changes |
 | SSE breaks in production because Caddyfile was committed without streaming directives | Half-day of debugging on the box instead of on laptop | Task 10 Caddyfile includes `flush_interval -1` and long read/write timeouts from day one; Task 22 verifies end-to-end against the same committed file |
+| `MINIO_EXTERNAL_ENDPOINT` interpolation composes `HOST_IP:PORT`, incompatible with the `download.follow.example` public hostname | Presigned download URLs embed `download.follow.example:9000` and fail on every client | Task 11b rewires the env var to direct pass-through; Task 28 sets the bare hostname; Task 35 verifies the embedded host in a real presigned URL |
+| Host destroyed with `.env` secrets unrecoverable | Restored DB and MinIO bucket cannot be unlocked; JWTs issued before the incident cannot be verified | Task 13 adds encrypted `.env` backup to R2 using `age`; passphrase lives in the password manager; Task 28 mandates every secret also be stored in the password manager verbatim |
+| Hetzner snapshot restore "just works" — assumed but never tested | First snapshot restore during a real outage reveals an unknown quirk | Task 34b runs the snapshot restore drill against a throwaway box before the platform is declared production-ready |
+| Cert renewal fails silently, first signal is outage | Pilot customer sees TLS errors with no prior warning | Task 37 adds a daily cert-expiry probe via healthchecks.io that alerts 15+ days before expiry — well inside Caddy's 30-day renewal window |
+| CPX21 OOMs under Task 6 resource limits (sum ~3.8GB on 4GB host) | Host OOM killer kills the wrong process during routine bursts | Task 24 defaults to CPX31 (8GB) and requires explicit Task 6 tightening before picking CPX21 |
+| On-box `docker compose build` takes 10-15 min per redeploy, blocks hot-fixes | Slow iteration, risk of panicked abort mid-build | Task 31 promotes `docker save \| ssh docker load` from laptop as the default redeploy path; runbook documents it as the primary procedure |
 
 ---
 
@@ -1401,15 +1616,16 @@ Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in de
 
 The plan is complete when:
 
-- [ ] All 38 tasks marked done.
+- [ ] All 40 tasks marked done.
 - [ ] Customer can access `https://app.follow.example` over HTTPS and complete the full route lifecycle (create, upload, navigate).
 - [ ] All four production hostnames serve traffic with valid Let's Encrypt certs: `api`, `upload`, `download`, `app`.
 - [ ] Presigned download URLs point at `download.follow.example` and work end-to-end from a phone.
-- [ ] R2 logical backups have run successfully for at least 2 consecutive nights, verified in R2.
+- [ ] R2 logical backups (postgres + MinIO + encrypted `.env`) have run successfully for at least 2 consecutive nights, verified in R2.
 - [ ] Hetzner Automated Backups enabled, first snapshot visible in dashboard.
-- [ ] A test restore from the most recent R2 backup has been performed within the last 7 days.
+- [ ] A test restore from the most recent R2 backup has been performed within the last 7 days (Task 19).
+- [ ] A snapshot restore drill has been performed at least once against a throwaway box (Task 34b).
 - [ ] fly.io is fully decommissioned.
-- [ ] Monitoring alerts are firing on intentional outages (including backup-last-success keyword monitor).
+- [ ] Monitoring alerts are firing on intentional outages (backup-last-success, disk-check, cert-expiry).
 - [ ] Runbook exists and has been read end-to-end at least once.
 
 ---
@@ -1440,9 +1656,16 @@ Deliberately NOT in this plan (move to a separate plan when needed):
 | 3. App code changes | 4 | 7 | 2-3 hours |
 | 4. Hetzner provisioning | 7 | 8 | 1-2 hours |
 | 5. Deploy & verify | 3 | 6 | 1-2 hours |
-| 6. Cutover & cleanup | 5 | 9 | 2-3 hours |
-| **Total** | **39** | **58** | **~3-4 days focused** |
+| 6. Cutover & cleanup | 6 | 10 | 3-4 hours |
+| **Total** | **40** | **59** | **~3-4 days focused** |
 
-Story points bumped: Task 22 (SSE through Caddy) raised from 2 to 3 to reflect the realistic debugging surface (Caddy buffering, CORS preflight on EventSource, idle timeout, HTTP/2 vs HTTP/1.1). Task 30 (Hetzner automated backups) added to Phase 4 at 1 SP. Task 8b (Valkey AOF persistence) added to Phase 2 at 1 SP to prevent in-flight pipeline state loss on valkey restarts.
+Task-count and scope changes from the previous revision:
+- **Removed**: Task 8 (REAPER env var cleanup) — already applied to `docker-compose.yml` out of band; no longer actionable.
+- **Rewritten**: Task 8 is now the Valkey persistence verification pass (formerly numbered 8b). Persistence was already enabled in compose; this task reframes as verify-and-polish with a mandatory kill-restart drill rather than a new feature.
+- **Added**: Task 11b (`MINIO_EXTERNAL_ENDPOINT` direct pass-through) to fix the bare-hostname problem in Phase 2.
+- **Added**: Task 34b (Hetzner snapshot restore drill) in Phase 6 to exercise the snapshot restore path once before production.
+- **Expanded**: Task 12 pins `mc` version via direct download, Task 13 adds encrypted `.env` backup to R2 using `age`, Task 20 rewritten with concrete file paths, Task 21 lists the four Flutter config files by path, Task 24 defaults to CPX31 after reconciling against Task 6 limits, Task 25 includes a minimal `fail2ban` config, Task 28 references the new `AGE_PASSPHRASE` and the Task 11b rewiring, Task 31 promotes laptop-side `docker save \| ssh docker load` as the default redeploy path, Task 37 adds a daily cert-expiry probe via healthchecks.io.
 
-The realistic worst case is 4-5 days, with the extra day absorbed by debugging Let's Encrypt cert issuance (now across three hostnames), CORS edge cases, the SSE-through-domain test, the first `follow-image-gateway` Docker build on the Hetzner box, and verifying presigned download URLs land on the correct host. Everything else is mechanical.
+Story points: Task 22 (SSE through Caddy) remains at 3. Task 30 (Hetzner automated backups) is 1 SP. Task 8 (Valkey verification) is 1 SP. Task 11b (`MINIO_EXTERNAL_ENDPOINT` rewire) is 1 SP. Task 34b (snapshot restore drill) is 1 SP.
+
+The realistic worst case is 4-5 days, with the extra day absorbed by debugging Let's Encrypt cert issuance (across three hostnames), CORS edge cases, the SSE-through-domain test, and verifying presigned download URLs land on the correct host. Everything else is mechanical.
