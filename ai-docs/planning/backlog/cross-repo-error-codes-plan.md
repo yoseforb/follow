@@ -1,10 +1,10 @@
 # Cross-Repo API Error Codes Implementation Plan
 
-**Status**: Backlog
+**Status**: Backlog (extended 2026-04-09 — absorbed deleted `error-api-mapper.md` plan and added HTTP shape validation)
 **Priority**: High (Developer Experience + User-Facing Quality)
 **Affected Repositories**: follow-api, follow-app
 **Contract Location**: `ai-docs/contracts/api-error-codes-contract.md` (coordination repo)
-**Estimated Story Points**: 30
+**Estimated Story Points**: 36 (was 30; +6 for Tasks A, B, C)
 
 ---
 
@@ -28,6 +28,35 @@ Flutter client can:
    message raw.
 2. Branch logic deterministically without string matching.
 3. Support future analytics, retry strategies, and user guidance per error type.
+
+### HTTP Response Shape Validation Gap (HTML-Crash Bug)
+
+A second, related problem exists independently of the error-code contract: when
+something other than `follow-api` occupies port 8080 (e.g., another process,
+a load-balancer error page, or a misconfigured `API_BASE_URL`), the server
+returns an HTML page. The client calls `jsonDecode()` on this HTML body and
+crashes with:
+
+```
+FormatException: Unexpected character (at character 1)
+<!doctype html>
+^
+```
+
+Two call sites in `auth_repository.dart` (lines 205 and 314) already catch
+`FormatException` and re-wrap it as `AuthException("Invalid response format
+from server - Original: ...")`. This is a workaround: it leaks raw exception
+text into the error message and masks the real problem (wrong server). The
+`route_repository.dart` does not catch `FormatException` at all — it propagates
+uncaught to the UI layer. The `connectivity_service.dart` health probe only
+checks `statusCode == 200`, so an imposter returning HTML 200 is reported as
+"online".
+
+The correct fix is upstream, at the HTTP response parsing boundary, before
+`jsonDecode()` is called. Tasks A and B below add this layer. Task C hardens
+the connectivity probe. Together with the error-code contract (Tasks 0–16),
+these three tasks give every HTTP boundary a structured, validated parse path
+that produces `ApiException` values instead of raw Dart exceptions.
 
 ### Architectural Position
 
@@ -867,46 +896,285 @@ No change to `InfraErrorResult`.
 
 ---
 
-### Task 9 — Extend `RouteException` with `code` Field
+### Task 9 — Wire `RouteException` Constructor to `ApiException` Base
 
 **Story Points**: 1
 **Repo**: `follow-app`
 **Files Affected**:
-- Modified: `lib/data/repositories/route_repository.dart`
+- Modified: `lib/data/repositories/route_repository_models.dart` (constructor delegates to `ApiException`)
 
 **Description**:
 
-Add `isDomainError` and `code` fields to `RouteException` for domain error
-identification and code-based localization lookup.
+**Scope change from original**: `code` is NOT added directly to `RouteException`
+here — it is already present on `ApiException` (Task A, which is a prerequisite
+for this task). This task only ensures `RouteException`'s constructor delegates
+`code`, `isDomainError`, and `isFormatError` correctly to the base class, and
+that all existing `throw RouteException(...)` call sites continue to compile
+unchanged.
+
+After Task A introduces `ApiException`, update `RouteException` to:
 
 ```dart
-class RouteException implements Exception {
+class RouteException extends ApiException {
   const RouteException(
+    super.message, {
+    super.statusCode,
+    super.responseBody,
+    super.originalError,
+    super.isDomainError = false,
+    super.code = '',
+    super.isFormatError = false,
+  });
+
+  // Domain-specific getters remain here unchanged:
+  bool get isNotFound => statusCode == 404;
+  // ... (all existing domain-specific getters)
+}
+```
+
+The default `code = ''` keeps all existing `throw RouteException(...)` call
+sites unchanged. Cross-reference: see Task A for the base class definition.
+
+**Acceptance Criteria**:
+- `RouteException extends ApiException` (not `implements Exception`)
+- `RouteException` constructor accepts `code` and `isFormatError` with defaults
+- All existing `throw RouteException(...)` call sites compile without changes
+- `dart analyze` passes
+
+---
+
+### Task A — Shared `ApiException` Base Class
+
+**Story Points**: 2
+**Repo**: `follow-app`
+**Files Affected**:
+- New: `lib/data/repositories/api_exception.dart`
+- Modified: `lib/data/repositories/auth_repository.dart` (make `AuthException` extend `ApiException`)
+- Modified: `lib/data/repositories/route_repository_models.dart` (make `RouteException` extend `ApiException`)
+
+**Description**:
+
+`AuthException` (currently at `auth_repository.dart:604-650`) and `RouteException`
+(at `route_repository_models.dart:466-514`) have identical shapes — `message`,
+`statusCode`, `responseBody`, `originalError` — but no common ancestor. Task 9
+was scoped to add `code` only to `RouteException`, which would cement the drift.
+This task moves `code` onto a shared base class so both exception types benefit.
+
+Create `lib/data/repositories/api_exception.dart` with:
+
+```dart
+/// Base class for all API-layer exceptions in the Follow app.
+///
+/// Provides common fields shared by [AuthException] and [RouteException].
+/// Domain-specific getters (e.g. [AuthException.isUserNotFound],
+/// [RouteException.isNotFound]) remain on the subclasses.
+abstract class ApiException implements Exception {
+  const ApiException(
     this.message, {
     this.statusCode,
     this.responseBody,
     this.originalError,
     this.isDomainError = false,
-    this.code = '',           // NEW: defaults to empty for backward-compat
+    this.code = '',
+    this.isFormatError = false,
   });
 
+  /// Human-readable error message (may be server-supplied or client-generated).
   final String message;
+
+  /// HTTP status code from the response, if available.
   final int? statusCode;
+
+  /// Raw response body, for debugging.
   final String? responseBody;
+
+  /// The original exception that caused this error, if any.
   final Object? originalError;
+
+  /// True when the server returned a structured domain error (4xx with a
+  /// recognised [code] value).
   final bool isDomainError;
-  final String code;          // NEW — empty when no specific code is known
-  // ...
+
+  /// SCREAMING_SNAKE_CASE error code from the API response `code` field.
+  /// Empty string when: infrastructure fault, server too old, or parse error.
+  /// Use [ApiErrorCodes] constants for comparison — never string literals.
+  final String code;
+
+  /// True when the response body was not valid JSON (e.g. an HTML page was
+  /// returned by an imposter server or a proxy). When true, [code] is always
+  /// empty and the caller must NOT retry.
+  final bool isFormatError;
+
+  @override
+  String toString() => 'ApiException($statusCode): $message';
 }
 ```
 
-The default is `''` (empty string) to keep all existing `throw RouteException(...)`
-call sites unchanged.
+Modify `AuthException` and `RouteException` to `extend ApiException` instead of
+`implements Exception`. Their existing domain-specific getters (`isUserNotFound`,
+`isNotFound`, etc.) stay on the subclasses unchanged. Their constructors delegate
+to `super` for the shared fields.
+
+**Relationship to Task 9**: Task 9's scope is reduced. `code` is now added on
+`ApiException` (here), not per-subclass. Task 9 only wires the `RouteException`
+constructor call sites. See the updated Task 9 description.
 
 **Acceptance Criteria**:
-- `RouteException` constructor accepts `code` with default `''`
-- All existing `throw RouteException(...)` call sites compile without changes
-- `dart analyze` passes
+- `AuthException extends ApiException` compiles
+- `RouteException extends ApiException` compiles
+- All existing `throw AuthException(...)` and `throw RouteException(...)` call
+  sites compile without changes
+- `ApiException.isFormatError` defaults to `false`
+- `dart analyze` passes with no errors
+
+---
+
+### Task B — Content-Type & Body-Sniff Validation in `ApiErrorParser`
+
+**Story Points**: 3
+**Repo**: `follow-app`
+**Files Affected**:
+- Modified: `lib/data/repositories/api_error_parser.dart` (add shape validation before `jsonDecode`)
+- Modified: `lib/data/models/api_error_response.dart` (no structural change needed; validation is in the parser)
+- Modified: `lib/data/repositories/auth_repository.dart` (remove `FormatException` workaround at lines 205 and 314)
+- Modified: `lib/data/repositories/route_repository.dart` (no explicit `FormatException` catch needed after this)
+- Modified: `lib/l10n/app_en.arb` (add `apiErrorFormatInvalid`)
+- Modified: `lib/l10n/app_he.arb` (add `apiErrorFormatInvalid`)
+- New: `test/data/repositories/api_error_parser_shape_validation_test.dart`
+
+**Description**:
+
+Before `jsonDecode()` is called anywhere in the repository layer, validate the
+HTTP response shape. This task extends `ApiErrorParser` (Task 8's file) with a
+pre-decode guard that runs on every non-2xx response branch.
+
+**Validation logic** (add as a private helper `_validateResponseShape` in
+`api_error_parser.dart`):
+
+```dart
+/// Returns a [FormatErrorResult] if the response cannot be JSON, null otherwise.
+FormatErrorResult? _validateResponseShape(
+  http.Response response,
+  String method,
+  Uri uri,
+) {
+  // 1. Content-type check (case-insensitive).
+  final contentType = (response.headers['content-type'] ?? '').toLowerCase();
+  final isJson = contentType.contains('application/json') ||
+      contentType.contains('+json');
+
+  // 2. Body sniff: if content-type is wrong OR absent, check first byte.
+  final body = response.body.trimLeft();
+  final looksLikeHtml = body.startsWith('<');
+
+  if (!isJson || looksLikeHtml) {
+    final hint = 'The server at ${uri.host}:${uri.port} may not be '
+        'follow-api — check API_BASE_URL.';
+    return FormatErrorResult(
+      message: 'Non-JSON response from $method ${uri.path} '
+          '(status ${response.statusCode}, '
+          'content-type: "${response.headers['content-type'] ?? 'absent'}"). '
+          '$hint',
+    );
+  }
+  return null;
+}
+```
+
+Add `FormatErrorResult` as a new sealed subtype of `ApiErrorParseResult`:
+
+```dart
+/// The response body was not valid JSON. The server may be an imposter
+/// (wrong port, proxy error page, misconfigured API_BASE_URL).
+/// Callers must NOT retry on this result.
+final class FormatErrorResult extends ApiErrorParseResult {
+  const FormatErrorResult({required this.message});
+  final String message;
+}
+```
+
+Call `_validateResponseShape` at the top of `parseApiError` (or equivalent
+entry point), before any `jsonDecode`. If it returns non-null, return that
+result immediately.
+
+Repositories catching `ApiException` must check `isFormatError` and surface
+`l10n.apiErrorFormatInvalid` — they must NOT retry.
+
+**CRITICAL — remove the existing workaround**: The `FormatException` catch
+blocks in `auth_repository.dart` at lines 205 and 314 that wrap as
+`AuthException("Invalid response format from server - Original: ...")` must be
+**deleted entirely**. That logic becomes dead code once validation runs upstream.
+Do not keep them "for safety" — removing dead workarounds is required by the
+project's engineering principles.
+
+**Add ARB keys** (also coordinate with Task 11 agent to avoid duplication):
+```
+"apiErrorFormatInvalid": "Cannot connect to the server. Check your network and API_BASE_URL."
+"@apiErrorFormatInvalid": { "description": "Shown when the server returns non-JSON (e.g. HTML from an imposter server)." }
+```
+Hebrew: `"apiErrorFormatInvalid": "לא ניתן להתחבר לשרת. בדוק את החיבור לרשת ואת כתובת ה-API."`
+
+**Acceptance Criteria**:
+- An HTML body with HTTP 200 status produces `FormatErrorResult` (not a thrown
+  `FormatException`) with the structured hint message
+- An HTML body with `text/html` content-type header produces `FormatErrorResult`
+- A missing `content-type` header where body starts with `<` produces
+  `FormatErrorResult`
+- A response with `content-type: application/json` and a valid JSON body
+  proceeds to normal parsing (no false positive)
+- Empty body produces `FormatErrorResult` (no content-type → sniff → empty
+  string does not start with `<` → proceed, but `jsonDecode('')` throws → the
+  existing `FormatException` catch in the parser handles it and returns an
+  `InfraErrorResult`; document this edge case)
+- The `FormatException` catch blocks removed from `auth_repository.dart:205,314`
+- Unit tests cover: `text/html` content-type, missing content-type, content-type
+  says JSON but body starts with `<`, empty body, truncated JSON
+- `dart analyze` passes with no errors
+- `flutter test --coverage` passes
+
+---
+
+### Task C — Harden `ConnectivityService` Health Probe
+
+**Story Points**: 1
+**Repo**: `follow-app`
+**Files Affected**:
+- Modified: `lib/data/services/connectivity_service.dart` (lines 120–165)
+- Possibly modified: `lib/ui/connectivity/connectivity_view_model.dart` (if a MISCONFIGURED state is added — investigate during implementation)
+
+**Description**:
+
+The current health probe at `connectivity_service.dart:120-165` only checks
+`statusCode == 200`. An imposter server returning HTML with status 200 is
+incorrectly reported as "online", masking the real connectivity problem.
+
+**Before implementing**, check the actual `/health` response shape from
+`follow-api` source at `/home/yoseforb/pkg/follow/follow-api/` to confirm the
+exact JSON body (expected: something like `{"status":"ok"}` or similar). Use
+whatever the real server returns as the authoritative shape.
+
+Extend the probe to:
+1. Validate `content-type` contains `application/json` or `+json`
+   (case-insensitive).
+2. As a body sniff fallback: reject if `response.body.trimLeft().startsWith('<')`.
+3. Optionally: attempt `jsonDecode` and verify the expected key is present
+   (e.g. `body['status'] == 'ok'`). Only add this if the follow-api `/health`
+   endpoint reliably returns a fixed shape — do not guess.
+
+On any validation failure (wrong content-type, HTML body, JSON parse error),
+treat the result the same as a non-200 status: report connectivity as NOT
+connected (or a new `MISCONFIGURED` state if the existing connectivity state
+machine supports it cleanly — investigate `connectivity_view_model.dart` before
+deciding; if adding a new state requires significant refactoring, report NOT
+connected and add a log line instead).
+
+**Acceptance Criteria**:
+- A health probe returning HTML `200 OK` causes the app to report NOT connected
+  (not "online")
+- A health probe returning valid JSON `200 OK` from follow-api continues to
+  report connected correctly
+- No regression in the happy-path connectivity detection
+- `dart analyze` passes with no errors
 
 ---
 
@@ -1280,6 +1548,13 @@ Requires follow-api and follow-app running locally together.
 ### Dependency Chain
 
 ```
+Task C (ConnectivityService hardening) — independent, ships first
+                                          (fixes HTML-crash bug immediately)
+
+Task B (Content-type/body-sniff validation) — independent of error-code contract
+  └─> Task A (ApiException base class) — prerequisite for Task B's isFormatError
+        └─> [integrate into Dart chain below]
+
 Task 0 (Consolidate errors) — must come first
   └─> Task 1 (Contract doc)
         ├─> Task 2 (Go constants)
@@ -1289,11 +1564,13 @@ Task 0 (Consolidate errors) — must come first
         │
         └─> Task 6 (Dart constants)
               ├─> Task 7 (ApiErrorResponse.code)
-              │     └─> Task 8 (ApiErrorParser.code)
-              │           └─> Task 9 (RouteException.code)
-              │                 └─> Task 10 (Repository error paths)
+              │     └─> Task B (shape validation — folds here; removes FormatException workaround)
+              │           └─> Task 8 (ApiErrorParser.code)
+              │                 └─> Task A (ApiException base class)
+              │                       └─> Task 9 (RouteException → ApiException constructor wire-up)
+              │                             └─> Task 10 (Repository error paths)
               │
-              └─> Task 11 (ARB localization strings)
+              └─> Task 11 (ARB localization strings — includes apiErrorFormatInvalid from Task B)
                     └─> Task 12 (Localizer utility)
                           ├─> Task 13 (RouteCreationScreen display)
                           └─> Task 14 (BaseViewModel display)
@@ -1303,9 +1580,16 @@ Task 0 (Consolidate errors) — must come first
 
 ### Recommended Sequential Order for Single Agent
 
-**Go work first (Tasks 0–5)**: 0 → 1 → 2 → 3 → 4 → 5
+**IMMEDIATE — ship first, independent of full contract rollout**:
+- Task C (ConnectivityService hardening) — 1sp, self-contained, fixes false
+  "online" from imposter server. No dependencies on other tasks.
+- Task B (Shape validation + FormatException workaround removal) — 3sp, requires
+  Task A for the `isFormatError` field. Together Tasks A+B fix the HTML-crash
+  bug. **Ship Tasks A → B before starting the main contract chain.**
 
-**Dart work second (Tasks 6–16)**: 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16
+**Go work (Tasks 0–5)**: 0 → 1 → 2 → 3 → 4 → 5
+
+**Dart work (Tasks 6–16)**: 6 → 7 → B → 8 → A → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16
 
 Tasks 6–10 are prerequisites for Tasks 11–15. Tasks 11–12 can be done in
 parallel with Tasks 13–14 if using two agents.
@@ -1314,11 +1598,13 @@ parallel with Tasks 13–14 if using two agents.
 
 If splitting across agents:
 - **backend-api-engineer**: Tasks 0, 1, 2, 3, 4, 5
-- **frontend-flutter-engineer**: Tasks 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+- **frontend-flutter-engineer**: Tasks C, A, B (first, immediately), then
+  6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
 
 The backend work (Tasks 0–5) is a prerequisite for fully testing the Flutter
 work, but the Flutter implementation (Tasks 6–14) can be written and unit-tested
-against mock responses before the backend ships.
+against mock responses before the backend ships. Tasks C, A, B are fully
+independent of the backend and should ship first.
 
 ---
 
@@ -1331,6 +1617,17 @@ is already complete per the commit history. The error formatter in Task 3 of thi
 plan depends on `goa.ServiceError.Unwrap()` returning the domain error — which
 requires the `errors.Is()` pattern to be in place. This dependency is already
 satisfied.
+
+### Supersedes: `error-api-mapper.md`
+
+The plan `ai-docs/planning/backlog/error-api-mapper.md` was deleted (`git rm`)
+on 2026-04-09. It proposed reading a lowercase `body['error']` field (e.g.
+`route_state_error`) from today's server shape and mapping it to 13 localized
+messages. That approach was a workaround against the current server's lack of a
+stable code field. This plan obsoletes it entirely: the proper SCREAMING_SNAKE_CASE
+`code` field (added via the Goa formatter in Task 3) is the correct mechanism,
+and the ~55-code contract with Dart constants and `api_error_localizer.dart`
+(Tasks 6, 12) replaces the ad-hoc 13-message mapping.
 
 ---
 
@@ -1353,6 +1650,12 @@ satisfied.
 - **Goa DSL regeneration**: This plan deliberately avoids modifying the Goa
   DSL and regenerating `gen/`. The formatter approach achieves the goal without
   touching generated code.
+- **Migrating to `dio` or adding an interceptor stack**: The `http` package
+  with a single `ApiErrorParser` choke point is sufficient. No HTTP client
+  migration is in scope.
+- **Full interceptor / middleware stack**: A shared `ApiException` base class
+  plus centralized pre-decode validation in `ApiErrorParser` is the correct
+  scope. Additional abstraction layers are not justified by current needs.
 
 ---
 
@@ -1376,27 +1679,33 @@ satisfied.
 ### New Files (follow-app)
 
 | File | Purpose |
-|------|---------|
-| `lib/data/repositories/api_error_codes.dart` | Dart error code constants |
-| `lib/data/repositories/api_error_localizer.dart` | Code → localized string lookup |
-| `test/data/repositories/api_error_codes_test.dart` | Constant value tests |
-| `test/data/repositories/api_error_localizer_test.dart` | Localizer logic tests |
+|------|---------| 
+| `lib/data/repositories/api_exception.dart` | Shared `ApiException` base class (Task A) |
+| `lib/data/repositories/api_error_codes.dart` | Dart error code constants (Task 6) |
+| `lib/data/repositories/api_error_localizer.dart` | Code → localized string lookup (Task 12) |
+| `test/data/repositories/api_error_codes_test.dart` | Constant value tests (Task 15) |
+| `test/data/repositories/api_error_localizer_test.dart` | Localizer logic tests (Task 15) |
+| `test/data/repositories/api_error_parser_shape_validation_test.dart` | Shape validation edge cases (Task B) |
 
 ### Modified Files (follow-app)
 
 | File | Change |
 |------|--------|
-| `lib/data/models/api_error_response.dart` | Add `code` field and `hasCode` getter |
-| `lib/data/repositories/api_error_parser.dart` | Surface `code` in `DomainErrorResult` |
-| `lib/data/repositories/route_repository.dart` | Propagate `code` in `RouteException` |
-| `lib/ui/route_creation/route_creation_view_model.dart` | Add `_domainErrorCode` field |
-| `lib/ui/route_creation/route_creation_screen.dart` | Code-based lookup before message fallback |
-| `lib/ui/base/base_view_model.dart` | Code-aware error message in `executeOperation` |
-| `lib/l10n/app_en.arb` | ~20 error code localization keys (MVP subset) |
-| `lib/l10n/app_he.arb` | ~20 error code localization keys (Hebrew) |
-| `test/data/models/api_error_response_test.dart` | Add `code` field test cases |
-| `test/data/repositories/api_error_parser_test.dart` | Add `code` propagation cases |
-| `test/ui/route_creation/route_creation_view_model_test.dart` | Add `domainErrorCode` cases |
+| `lib/data/models/api_error_response.dart` | Add `code` field and `hasCode` getter (Task 7) |
+| `lib/data/repositories/api_error_parser.dart` | Add shape validation + `FormatErrorResult`; surface `code` in `DomainErrorResult` (Tasks B, 8) |
+| `lib/data/repositories/auth_repository.dart` | Extend `AuthException` from `ApiException`; remove `FormatException` workaround at lines 205, 314 (Tasks A, B) |
+| `lib/data/repositories/route_repository_models.dart` | Extend `RouteException` from `ApiException` (Tasks A, 9) |
+| `lib/data/repositories/route_repository.dart` | Propagate `code` and `isFormatError` in error paths (Task 10) |
+| `lib/data/services/connectivity_service.dart` | Validate content-type + body shape in health probe (Task C) |
+| `lib/ui/connectivity/connectivity_view_model.dart` | Possibly add MISCONFIGURED state (Task C — investigate during implementation) |
+| `lib/ui/route_creation/route_creation_view_model.dart` | Add `_domainErrorCode` field (Task 13) |
+| `lib/ui/route_creation/route_creation_screen.dart` | Code-based lookup before message fallback (Task 13) |
+| `lib/ui/base/base_view_model.dart` | Code-aware error message in `executeOperation` (Task 14) |
+| `lib/l10n/app_en.arb` | ~20 error code keys + `apiErrorFormatInvalid` (Tasks B, 11) |
+| `lib/l10n/app_he.arb` | ~20 error code keys + `apiErrorFormatInvalid` in Hebrew (Tasks B, 11) |
+| `test/data/models/api_error_response_test.dart` | Add `code` field test cases (Task 15) |
+| `test/data/repositories/api_error_parser_test.dart` | Add `code` propagation + shape validation cases (Tasks B, 15) |
+| `test/ui/route_creation/route_creation_view_model_test.dart` | Add `domainErrorCode` cases (Task 15) |
 
 ---
 
