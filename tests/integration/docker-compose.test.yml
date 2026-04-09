@@ -25,3 +25,6 @@ services:
       # stuck-message recovery don't have to wait minutes.
       - RECLAIMER_IDLE_TIMEOUT=5s
       - RECLAIMER_SCAN_INTERVAL=2s
+      - REAPER_SCAN_INTERVAL=1s
+      - REAPER_STALE_THRESHOLD=2s
+
