@@ -1007,13 +1007,13 @@ Use the **Shared Regular Performance** plan (not Cost-Optimized, not Dedicated):
 
 Prefer the **CPX line (AMD EPYC)** over the CX line (Intel) — at the same price point, CPX gives more vCPUs and better burst performance.
 
-- **CPX31** (4 vCPU AMD shared, 8GB RAM, 160GB SSD) — ~11 EUR/month. **Default recommendation**. 8 GB leaves ~5.4 GB headroom over the 2.6 GiB measured peak. Room for PostgreSQL `shared_buffers` tuning, Linux page cache, and `docker build` scratch space without risk of OOM.
-- **CPX21** (3 vCPU AMD shared, 4GB RAM, 80GB SSD) — ~8 EUR/month. Viable with the `malloc_trim` fix (2.6 GiB peak, 1.4 GiB headroom), but tight if PostgreSQL `shared_buffers` is tuned up or traffic spikes. Live-resizable to CPX31 with one click.
+- **CPX21** (3 vCPU AMD shared, 4GB RAM, 80GB SSD) — ~8 EUR/month. **Default recommendation**. Measured peak is 2.6 GiB under extreme sustained load (60 routes back-to-back). Realistic MVP usage (1-5 routes per session) peaks at ~1.8 GiB total, leaving 2.2 GiB headroom. 3 vCPUs is sufficient for the bursty pipeline. 80 GB SSD is plenty (PostgreSQL is tiny, images go to MinIO). Live-resizable to CPX31 in minutes if needed.
+- **CPX31** (4 vCPU AMD shared, 8GB RAM, 160GB SSD) — ~11 EUR/month. Upgrade path if CPX21 proves tight — e.g. PostgreSQL `shared_buffers` tuned to 1 GB, or concurrent route creation causes memory pressure. Zero-downtime resize from CPX21.
 - **CCX13** (2 vCPU dedicated, 8GB RAM) — skip. ~2-3x the price for guaranteed cores the workload doesn't need.
 
 Shared vCPU is fine: bursts are seconds long, the rest of the day is idle. Hetzner allows live resizing of CPX instances.
 
-**CPX31 benchmark reference** (Geekbench 6.3.0, AMD EPYC Zen 2): single-core 1450, multi-core 4767. Object Detection score 805 (single) / 2863 (multi). Route processing that takes ~1.3s on a dev machine (i7-11700, 16 cores) will likely take 4-6s on CPX31. Acceptable for MVP.
+**CPX21 benchmark reference** (Geekbench 6.3.0, AMD EPYC Zen 2): single-core 1450, multi-core 4767. Object Detection score 805 (single) / 2863 (multi). Route processing that takes ~1.3s on a dev machine (i7-11700, 16 cores) will likely take 4-6s on CPX21. Acceptable for MVP.
 
 #### Location and OS
 
@@ -1631,7 +1631,7 @@ Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in de
 | Host destroyed with `.env` secrets unrecoverable | Restored DB and MinIO bucket cannot be unlocked; JWTs issued before the incident cannot be verified | Task 13 adds encrypted `.env` backup to R2 using `age`; passphrase lives in the password manager; Task 28 mandates every secret also be stored in the password manager verbatim |
 | Hetzner snapshot restore "just works" — assumed but never tested | First snapshot restore during a real outage reveals an unknown quirk | Task 34b runs the snapshot restore drill against a throwaway box before the platform is declared production-ready |
 | Cert renewal fails silently, first signal is outage | Pilot customer sees TLS errors with no prior warning | Task 37 adds a daily cert-expiry probe via healthchecks.io that alerts 15+ days before expiry — well inside Caddy's 30-day renewal window |
-| CPX21 OOMs under sustained gateway load | Host OOM killer kills the wrong process during routine bursts | Measured peak is 2.6 GiB with `malloc_trim` fix; CPX21 (4GB) is viable but tight — CPX31 (8GB) is the default for safety margin |
+| CPX21 OOMs under sustained gateway load | Host OOM killer kills the wrong process during routine bursts | Measured peak is 2.6 GiB extreme / 1.8 GiB realistic with `malloc_trim` fix; CPX21 (4GB) has 1.4-2.2 GiB headroom; live-resize to CPX31 in minutes if needed |
 | On-box `docker compose build` takes 10-15 min per redeploy, blocks hot-fixes | Slow iteration, risk of panicked abort mid-build | Task 31 promotes `docker save \| ssh docker load` from laptop as the default redeploy path; runbook documents it as the primary procedure |
 
 ---
