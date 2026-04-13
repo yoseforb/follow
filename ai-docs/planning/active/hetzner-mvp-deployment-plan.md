@@ -192,16 +192,17 @@ logging:
 
 **Description**
 
-A runaway upload or a query gone wrong can OOM the host. Cap memory per service so the kernel kills the offender, not postgres. Recommended starting points (tune after observing real load):
+A runaway upload or a query gone wrong can OOM the host. Cap memory per service so the kernel kills the offender, not postgres. Limits below are derived from measured benchmarks (`ai-docs/research/gateway-memory-benchmark.md` — 60 routes, ~140 images):
 
-| Service | Memory limit | CPU limit |
-|---------|--------------|-----------|
-| postgres | 1g | 1.0 |
-| valkey | 384m | 0.5 |
-| minio | 768m | 1.0 |
-| follow-api | 512m | 1.0 |
-| follow-image-gateway | 1g (libvips + ONNX models) | 2.0 |
-| caddy | 128m | 0.5 |
+| Service | Measured Peak | Memory limit | CPU limit | Rationale |
+|---------|--------------|--------------|-----------|-----------|
+| postgres | 40 MiB (idle) | 768m | 1.0 | Room for `shared_buffers` tuning in production |
+| valkey | 11 MiB | 128m | 0.5 | Rock solid; `--maxmemory 256mb` already caps data size |
+| minio | 220 MiB | 384m | 1.0 | Grows linearly with stored images; ~75% headroom |
+| follow-api | 35 MiB | 128m | 1.0 | Trivial even under sustained load; 3.5x headroom |
+| follow-image-gateway | 1.3 GiB (with malloc fix) | 1792m | 2.0 | ~35% headroom for sawtooth pattern; **requires malloc_trim fix** |
+
+**Prerequisite**: The gateway's 1.3 GiB peak requires the `cmem/malloc_trim.go` fix (commit `2273fba`). Without it, peak is 3.4 GiB due to glibc malloc fragmentation.
 
 Use `deploy.resources.limits` (compose v3+ syntax — works with `docker compose up -d`).
 
