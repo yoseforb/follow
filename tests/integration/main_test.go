@@ -191,7 +191,7 @@ func setupDocker() {
 	// comma-separated list of paths (relative to project root).
 	composeFiles := []string{composePath, composeTestOverride}
 	if extra := os.Getenv("COMPOSE_EXTRA_FILES"); extra != "" {
-		for _, f := range strings.Split(extra, ",") {
+		for f := range strings.SplitSeq(extra, ",") {
 			f = strings.TrimSpace(f)
 			abs := filepath.Join(projectRoot, f)
 			composeFiles = append(composeFiles, abs)

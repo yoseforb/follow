@@ -519,6 +519,7 @@ func seedSingleRoute(
 	)
 
 	waitSeedImages(t, createResp, valkeyClient, routeNum)
+	waitForRouteReady(t, routeID, authToken, 30*time.Second)
 	publishSeedRoute(t, routeID, authToken, routeNum)
 
 	t.Logf(

@@ -522,6 +522,53 @@ func createRouteWithWaypoints(
 	return result
 }
 
+// waitForRouteReady polls GET /api/v1/routes/{routeID} until
+// route_status equals "ready" or timeout elapses. This bridges
+// the gap between the gateway writing stage=done to Valkey and
+// the API consumer updating PostgreSQL (which triggers the
+// route's PENDING→READY transition).
+func waitForRouteReady(
+	t *testing.T,
+	routeID string,
+	authToken string,
+	timeout time.Duration,
+) {
+	t.Helper()
+
+	const pollInterval = 200 * time.Millisecond
+
+	deadline := time.Now().Add(timeout)
+	routeURL := apiURL + "/api/v1/routes/" + routeID
+
+	for time.Now().Before(deadline) {
+		resp := doRequest(
+			t, http.MethodGet, routeURL, nil, authToken,
+		)
+
+		var body map[string]any
+
+		err := json.NewDecoder(resp.Body).Decode(&body)
+		resp.Body.Close()
+
+		if err == nil {
+			route, _ := body["route"].(map[string]any)
+			if route != nil {
+				if status, _ := route["route_status"].(string); status == "ready" {
+					return
+				}
+			}
+		}
+
+		time.Sleep(pollInterval)
+	}
+
+	t.Fatalf(
+		"waitForRouteReady: route %s did not reach ready "+
+			"within %s",
+		routeID, timeout,
+	)
+}
+
 // imageStatusKey returns the Valkey key for an image's status hash.
 func imageStatusKey(imageID string) string {
 	return fmt.Sprintf("%s:%s", valkey.KeyPrefixImageStatus, imageID)
