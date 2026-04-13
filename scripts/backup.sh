@@ -11,7 +11,7 @@ install_cron() {
   # Dump required env vars into the crontab — cron runs in a
   # clean shell with no access to the container's environment.
   {
-    env | grep -E '^(R2_|POSTGRES_|PGPASSWORD|MINIO_|AGE_)' \
+    env | grep -E '^(R2_|POSTGRES_|PGPASSWORD|MINIO_|AGE_KEY)' \
       | sort
     echo "${BACKUP_SCHEDULE} /usr/local/bin/backup.sh run-now 2>&1"
   } | crontab -
@@ -51,10 +51,13 @@ run_now() {
   echo "backup: minio mirror complete"
 
   # ── 3. Encrypted .env backup ─────────────────────────────────
-  # age reads AGE_PASSPHRASE from the environment natively —
-  # no stdin piping needed (age reads passphrase from tty, not stdin).
+  # age --passphrase cannot run non-interactively (reads from tty,
+  # not stdin or env). Use a recipient key instead: the operator
+  # generates a keypair with `age-keygen`, stores the private key
+  # in the password manager, and sets AGE_KEY (public key) in .env.
+  # Decryption requires the private key from the password manager.
   echo "backup: encrypting .env..."
-  age --passphrase -o /tmp/env-backup.age /backup-src/.env
+  age -r "${AGE_KEY}" -o /tmp/env-backup.age /backup-src/.env
   mc cp /tmp/env-backup.age "r2/${R2_BACKUP_BUCKET}/env/${ts}.env.age"
   shred -u /tmp/env-backup.age
   echo "backup: .env backup uploaded"

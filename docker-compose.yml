@@ -272,7 +272,7 @@ services:
       - MINIO_ACCESS_KEY_ID=${MINIO_ACCESS_KEY_ID}
       - MINIO_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME}
-      - AGE_PASSPHRASE=${AGE_PASSPHRASE}
+      - AGE_KEY=${AGE_KEY}
     volumes:
       - ./.env:/backup-src/.env:ro
     networks:
