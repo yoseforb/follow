@@ -26,5 +26,8 @@ services:
       - RECLAIMER_IDLE_TIMEOUT=5s
       - RECLAIMER_SCAN_INTERVAL=2s
       - REAPER_SCAN_INTERVAL=1s
-      - REAPER_STALE_THRESHOLD=2s
+      # Gateway stages (ML inference) take 3-8s under container
+      # resource limits (cpus: 2.0). Local mode has no limits so 2s
+      # works there. 15s accommodates the slowest observed stage.
+      - REAPER_STALE_THRESHOLD=15s
 
