@@ -247,6 +247,46 @@ services:
       retries: 5
       start_period: 30s
 
+  # ── Backup (prod only) ──────────────────────────────────────────
+
+  backup:
+    build:
+      context: .
+      dockerfile: scripts/backup.Dockerfile
+    profiles: [prod]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_ACCESS_KEY=${R2_ACCESS_KEY}
+      - R2_SECRET_KEY=${R2_SECRET_KEY}
+      - R2_BACKUP_BUCKET=${R2_BACKUP_BUCKET}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - PGPASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - MINIO_ACCESS_KEY_ID=${MINIO_ACCESS_KEY_ID}
+      - MINIO_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY}
+      - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME}
+      - AGE_PASSPHRASE=${AGE_PASSPHRASE}
+    volumes:
+      - ./.env:/backup-src/.env:ro
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
   # ── Reverse Proxy (prod only) ────────────────────────────────────
 
   caddy:

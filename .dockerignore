@@ -13,6 +13,10 @@
 !follow-image-gateway/**
 !follow-image-gateway/
 
+# Allow scripts (needed for backup sidecar image)
+!scripts/**
+!scripts/
+
 # Exclude git metadata from sub-repos
 follow-api/.git/**
 follow-image-gateway/.git/**
