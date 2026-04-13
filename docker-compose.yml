@@ -33,6 +33,11 @@ services:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     networks:
       - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -51,6 +56,11 @@ services:
       - "${VALKEY_HOST_PORT:-6379}:6379"
     networks:
       - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
@@ -73,6 +83,11 @@ services:
       - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     networks:
       - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -97,6 +112,11 @@ services:
       mc version enable myminio/follow-images;
       echo 'Bucket follow-images ready';
       "
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   # ── Application Services ───────────────────────────────────────────
 
@@ -134,6 +154,11 @@ services:
       - "${API_HOST_PORT:-8080}:8080"
     networks:
       - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
       # Use GET (-O /dev/null), not --spider: --spider sends HEAD, which
       # Goa-generated routes reject with 405 since /health is GET-only.
@@ -173,6 +198,11 @@ services:
       - "${GATEWAY_HOST_PORT:-8090}:8090"
     networks:
       - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     healthcheck:
       # Use GET (-O /dev/null), not --spider: --spider sends HEAD, which
       # Goa-generated routes reject with 405 since /health is GET-only.
