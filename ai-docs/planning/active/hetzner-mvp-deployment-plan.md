@@ -154,11 +154,13 @@ Cloudflare Pages requires a two-sided handshake: the DNS record points at Pages,
 
 ---
 
-## Phase 2 — Local docker-compose hardening
+## Phase 2 — Local docker-compose hardening - Done
+
+**Status**: Done
 
 These tasks all edit the root `docker-compose.yml` (and add new files alongside it). Verify everything on the laptop before touching Hetzner. Most are mechanical config edits.
 
-### Task 5: Add log rotation to every service
+### Task 5: Add log rotation to every service - Done
 
 **Story Points**: 1
 
@@ -186,7 +188,7 @@ logging:
 
 ---
 
-### Task 6: Add resource limits to every service
+### Task 6: Add resource limits to every service - Done
 
 **Story Points**: 2
 
@@ -218,7 +220,7 @@ Use `deploy.resources.limits` (compose v3+ syntax — works with `docker compose
 
 ---
 
-### Task 7: Bump `start_period` on follow-api healthcheck
+### Task 7: Bump `start_period` on follow-api healthcheck - Done
 
 **Story Points**: 1
 
@@ -236,7 +238,7 @@ Current `start_period: 5s` is too aggressive — `follow-api` runs migrations on
 
 ---
 
-### Task 8: Verify Valkey persistence and reformat command block
+### Task 8: Verify Valkey persistence and reformat command block - Done
 
 **Story Points**: 1
 
@@ -286,7 +288,7 @@ If these are lost on a Valkey restart, any in-flight image is orphaned: the clie
 
 ---
 
-### Task 9: Add Caddy service under `profiles: [prod]`
+### Task 9: Add Caddy service under `profiles: [prod]` - Done
 
 **Story Points**: 2
 
@@ -335,7 +337,7 @@ Add `caddy_data` and `caddy_config` to the volumes block.
 
 ---
 
-### Task 10: Write the Caddyfile
+### Task 10: Write the Caddyfile - Done
 
 **Story Points**: 1
 
@@ -400,7 +402,7 @@ If the gateway limit has grown (e.g., to 20MB for higher-res images), bump the C
 
 ---
 
-### Task 11: Bind all host-published ports to `127.0.0.1`
+### Task 11: Bind all host-published ports to `127.0.0.1` - Done
 
 **Story Points**: 1
 
@@ -452,7 +454,7 @@ The earlier plan considered `profiles: [dev]` to gate port publishing. That appr
 
 ---
 
-### Task 11b: Rewire `MINIO_EXTERNAL_ENDPOINT` for direct pass-through
+### Task 11b: Rewire `MINIO_EXTERNAL_ENDPOINT` for direct pass-through - Done
 
 **Story Points**: 1
 
@@ -501,7 +503,7 @@ Do NOT delete `HOST_IP` — it is still used elsewhere (e.g., `GATEWAY_BASE_URL`
 
 ---
 
-### Task 12: Add backup sidecar service under `profiles: [prod]`
+### Task 12: Add backup sidecar service under `profiles: [prod]` - Done
 
 **Story Points**: 2
 
@@ -519,13 +521,13 @@ FROM alpine:3.21
 
 # Pin MC_RELEASE to a known-good MinIO Client build. Bump explicitly
 # when a newer version is validated — never implicitly via apk.
-ARG MC_RELEASE=RELEASE.2025-01-17T23-25-50Z
+ARG MC_RELEASE=RELEASE.2025-08-13T08-35-41Z
 
 RUN apk add --no-cache postgresql17-client tzdata ca-certificates curl \
  && curl -fsSL "https://dl.min.io/client/mc/release/linux-amd64/archive/mc.${MC_RELEASE}" \
       -o /usr/local/bin/mc \
  && chmod +x /usr/local/bin/mc \
- && apk del curl
+ && apk del --no-cache curl
 
 COPY scripts/backup.sh /usr/local/bin/backup.sh
 RUN chmod +x /usr/local/bin/backup.sh
@@ -557,6 +559,7 @@ backup:
     - POSTGRES_DB=${POSTGRES_DB}
     - MINIO_ACCESS_KEY_ID=${MINIO_ACCESS_KEY_ID}
     - MINIO_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY}
+    - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME}
   networks:
     - internal
   logging:
@@ -588,7 +591,7 @@ backup:
 
 ---
 
-### Task 13: Write `scripts/backup.sh`
+### Task 13: Write `scripts/backup.sh` - Done
 
 **Story Points**: 2
 
@@ -598,10 +601,10 @@ Two-mode script:
 
 1. `install-cron` — writes a `/etc/crontabs/root` entry that runs the backup nightly (e.g., 03:00 UTC).
 2. `run-now` — performs the actual backup:
-   - `pg_dump -Fc -h postgres -U $POSTGRES_USER $POSTGRES_DB | gzip` → upload to `r2://$R2_BACKUP_BUCKET/postgres/YYYY-MM-DD-HHMMSS.dump.gz`. `PGPASSWORD` is already set in the container environment (Task 12), so no credential handling in the script.
+   - `pg_dump -Fc -h postgres -U $POSTGRES_USER $POSTGRES_DB | mc pipe` → upload to `r2://$R2_BACKUP_BUCKET/postgres/YYYY-MM-DD-HHMMSS.dump`. `pg_dump -Fc` (custom format) compresses internally, so gzip is redundant. `PGPASSWORD` is already set in the container environment (Task 12), so no credential handling in the script.
    - `mc alias set r2 $R2_ENDPOINT $R2_ACCESS_KEY $R2_SECRET_KEY`
    - `mc alias set local http://minio:9000 $MINIO_ACCESS_KEY_ID $MINIO_SECRET_ACCESS_KEY`
-   - `mc mirror --overwrite local/follow-images r2/$R2_BACKUP_BUCKET/minio/follow-images/`
+   - `mc mirror --overwrite local/${MINIO_BUCKET_NAME} r2/$R2_BACKUP_BUCKET/minio/${MINIO_BUCKET_NAME}/`
    - **Back up the encrypted `.env` file** (see "Encrypted `.env` backup" below) — upload to `r2://$R2_BACKUP_BUCKET/env/YYYY-MM-DD-HHMMSS.env.age`.
    - After all steps succeed, write a last-success timestamp to `r2://$R2_BACKUP_BUCKET/_last_success.txt` for Task 34 monitoring.
    - Log success/failure to stdout (caught by Docker logging driver).
@@ -610,7 +613,7 @@ Two-mode script:
 
 The `.env` file on the Hetzner box holds every production secret: `JWT_SECRET`, the Ed25519 keypair, `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `R2_*` credentials. The postgres + MinIO mirror backups are useless if the host is destroyed and the secrets are lost — JWTs issued before the incident can't be verified, the restored MinIO bucket can't be unlocked, and the pilot customer is effectively locked out. The password manager is the primary source of truth (Task 23 / Task 28 both require it), but a machine-readable backup that's always in sync with what's actually running on the box is cheap insurance.
 
-Use `age` (small, simple, no key management ceremony) for symmetric encryption with a passphrase known only to the operator and stored in the password manager. Add `age` to `scripts/backup.Dockerfile`:
+Use `age` (small, simple, no key management ceremony) for asymmetric encryption with a recipient public key. The operator generates a keypair with `age-keygen`, puts the public key (`age1...`) in `.env` as `AGE_KEY`, and stores the private key (`AGE-SECRET-KEY-...`) in the password manager. `age --passphrase` was considered first but rejected because `age` reads the passphrase from the tty, not from an environment variable or stdin in a way that works non-interactively in a cron container. `age -r` (recipient public key) works fully non-interactively. Add `age` to `scripts/backup.Dockerfile`:
 
 ```dockerfile
 # In backup.Dockerfile, alongside the existing apk add line
@@ -620,21 +623,20 @@ RUN apk add --no-cache age
 In `backup.sh`, before uploading:
 
 ```bash
-# AGE_PASSPHRASE is a container env var sourced from the host .env
-# (circular, but intentional — the operator types it in once and it
-# never leaves the box unencrypted).
-age --passphrase \
+# AGE_KEY is the age public key (age1...) sourced from the host .env.
+# The corresponding private key (AGE-SECRET-KEY-...) lives only in the
+# operator's password manager and is needed for decryption/recovery.
+age -r "$AGE_KEY" \
     -o /tmp/env-backup.age \
-    /backup-src/.env \
-  < <(printf '%s\n%s\n' "$AGE_PASSPHRASE" "$AGE_PASSPHRASE")
+    /backup-src/.env
 mc cp /tmp/env-backup.age \
     "r2/${R2_BACKUP_BUCKET}/env/$(date -u +%Y-%m-%d-%H%M%S).env.age"
 shred -u /tmp/env-backup.age
 ```
 
-The `.env` file must be mounted read-only into the backup container at `/backup-src/.env` (update the `backup` service's `volumes:` block in Task 12 to add `- ./.env:/backup-src/.env:ro`). `AGE_PASSPHRASE` is itself an env var declared in `.env` — the operator sets it when provisioning the box (Task 28) and records it in the password manager alongside the other secrets.
+The `.env` file must be mounted read-only into the backup container at `/backup-src/.env` (update the `backup` service's `volumes:` block in Task 12 to add `- ./.env:/backup-src/.env:ro`). `AGE_KEY` is an env var declared in `.env` containing the public key (`age1...`) — the operator sets it when provisioning the box (Task 28) and records the corresponding private key (`AGE-SECRET-KEY-...`) in the password manager alongside the other secrets.
 
-**Recovery procedure** (document in the runbook, Task 38): download the latest `env/*.age` from R2, `age --decrypt -o .env.recovered env-backup.age` (prompts for the passphrase from the password manager), compare to any stale version the operator still has, place on the new box, `chmod 600`.
+**Recovery procedure** (document in the runbook, Task 38): download the latest `env/*.age` from R2, `age --decrypt -i /path/to/private-key.txt -o .env.recovered env-backup.age` (using the private key from the password manager), compare to any stale version the operator still has, place on the new box, `chmod 600`.
 
 Use `set -euo pipefail`. Exit non-zero on any failure so the container restarts and the failure is visible in logs/monitoring.
 
@@ -664,14 +666,15 @@ Document the switch criteria and decision tree in the runbook (Task 38) so futur
 - `bash -n scripts/backup.sh` passes.
 - `shellcheck scripts/backup.sh` passes.
 - `run-now` mode works end-to-end against laptop postgres + MinIO + a real R2 bucket.
-- `r2://$R2_BACKUP_BUCKET/env/<timestamp>.env.age` exists after a successful run and is decryptable with the stored passphrase.
-- Decryption test: `age --decrypt env-backup.age` against the latest uploaded file recovers the exact bytes of the original `.env` (verified with `diff`).
+- `r2://$R2_BACKUP_BUCKET/env/<timestamp>.env.age` exists after a successful run and is decryptable with the stored private key.
+- Decryption test: `age --decrypt -i /path/to/private-key.txt env-backup.age` against the latest uploaded file recovers the exact bytes of the original `.env` (verified with `diff`).
+- Preflight bucket checks: `backup.sh` validates both R2 and MinIO buckets exist before running, with clear error messages on failure.
 - `_last_success.txt` is written only on full success (not on partial failure), meaning a failed `.env` backup must also prevent the last-success ping.
 - Runbook (Task 38) contains the "when to switch from full mirror to incremental" decision criteria above AND the `.env` recovery procedure.
 
 ---
 
-### Task 14: Add R2 credentials to `.env.example`
+### Task 14: Add R2 credentials to `.env.example` - Done
 
 **Story Points**: 1
 
@@ -686,11 +689,16 @@ R2_ACCESS_KEY=<r2-access-key>
 R2_SECRET_KEY=<r2-secret-key>
 R2_BACKUP_BUCKET=follow-backups
 
+# ── MinIO bucket name ────────────────────────────────────────────
+MINIO_BUCKET_NAME=follow-images
+
 # ── .env backup encryption ───────────────────────────────────────
-# Passphrase used by `age` to encrypt the .env file before pushing
-# it to R2 (Task 13). Store this value in the password manager
-# alongside the other production secrets. Never commit a real value.
-AGE_PASSPHRASE=<long-random-passphrase>
+# age public key (age1...) used to encrypt the .env file before
+# pushing it to R2 (Task 13). Generate a keypair with `age-keygen`,
+# put the public key here, and store the private key
+# (AGE-SECRET-KEY-...) in the password manager. Never commit
+# a real key.
+AGE_KEY=<age1-public-key>
 ```
 
 **Files Affected**
@@ -699,13 +707,13 @@ AGE_PASSPHRASE=<long-random-passphrase>
 
 **Acceptance Criteria**
 
-- `R2_*` and `AGE_PASSPHRASE` variables added with placeholder values.
+- `R2_*`, `MINIO_BUCKET_NAME`, and `AGE_KEY` variables added with placeholder values.
 - Comment explains where to find R2 credentials in the Cloudflare dashboard.
-- Comment explains that `AGE_PASSPHRASE` must be preserved in the password manager and is the only way to decrypt the `.env` backups in R2.
+- Comment explains that the age private key (`AGE-SECRET-KEY-...`) must be preserved in the password manager and is the only way to decrypt the `.env` backups in R2.
 
 ---
 
-### Task 15: Create a separate R2 bucket for backups
+### Task 15: Create a separate R2 bucket for backups - Done
 
 **Story Points**: 1
 
@@ -721,7 +729,7 @@ Create a NEW R2 bucket dedicated to backups. Do NOT reuse the existing pre-MVP R
 
 ---
 
-### Task 16: Set R2 lifecycle rule for backup retention
+### Task 16: Set R2 lifecycle rule for backup retention - Done
 
 **Story Points**: 1
 
@@ -736,7 +744,7 @@ Configure a lifecycle rule on the backups bucket to delete objects older than 30
 
 ---
 
-### Task 17: Test the full prod profile locally
+### Task 17: Test the full prod profile locally - Done
 
 **Story Points**: 2
 
@@ -761,7 +769,7 @@ For local cert testing, override the Caddyfile temporarily to use Caddy's `tls i
 
 ---
 
-### Task 18: Test backup end-to-end on laptop
+### Task 18: Test backup end-to-end on laptop - Done
 
 **Story Points**: 2
 
@@ -772,7 +780,7 @@ Trigger `backup.sh run-now` against the local stack. Verify the postgres dump an
 ```bash
 docker compose --profile prod exec backup /usr/local/bin/backup.sh run-now
 # In the Cloudflare dashboard, verify:
-# - r2://follow-backups/postgres/<timestamp>.dump.gz exists, non-zero size
+# - r2://follow-backups/postgres/<timestamp>.dump exists, non-zero size
 # - r2://follow-backups/minio/follow-images/ contains all objects from local MinIO
 ```
 
@@ -784,7 +792,7 @@ docker compose --profile prod exec backup /usr/local/bin/backup.sh run-now
 
 ---
 
-### Task 19: Test restore end-to-end on laptop
+### Task 19: Test restore end-to-end on laptop - Done
 
 **Story Points**: 3
 
@@ -795,8 +803,8 @@ docker compose --profile prod exec backup /usr/local/bin/backup.sh run-now
 Process:
 
 1. Spin up a throwaway postgres container (`docker run --rm postgres:17-alpine`).
-2. Pull the latest dump from R2: `mc cp r2/follow-backups/postgres/latest.dump.gz ./`.
-3. Restore: `gunzip -c latest.dump.gz | pg_restore -d <throwaway-db>`.
+2. Pull the latest dump from R2: `mc cp r2/follow-backups/postgres/latest.dump ./`.
+3. Restore: `pg_restore --no-owner --no-privileges -d <throwaway-db> latest.dump`.
 4. Spot-check the data: row counts on `routes`, `users`, `images` match the source.
 5. Pull MinIO mirror: `mc mirror r2/follow-backups/minio/follow-images/ ./minio-restore/`.
 6. Spot-check object counts and a few files for byte-equality with source.
@@ -1157,7 +1165,7 @@ Create `/home/follow/follow/.env` with REAL production values. NEVER committed. 
 # - Strong unique passwords for POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD, etc.
 # - Real JWT_SECRET and Ed25519 keypair from Task 23
 # - Real R2_* credentials from Task 15
-# - Real AGE_PASSPHRASE for .env backup encryption (Task 13/14)
+# - Real AGE_KEY (age public key) for .env backup encryption (Task 13/14)
 #
 # Hostname-related vars (thanks to Task 11b rewiring, MINIO_EXTERNAL_ENDPOINT
 # is now a direct pass-through — set it to the bare host with NO port; the
@@ -1179,7 +1187,7 @@ chown follow:follow /home/follow/follow/.env
 
 **Acceptance Criteria**
 
-- File exists with all required vars from `.env.example`, including `AGE_PASSPHRASE`.
+- File exists with all required vars from `.env.example`, including `AGE_KEY`.
 - Permissions are `600`, owner `follow:follow`.
 - `cat .env` as any other user fails.
 - File is in `.gitignore` (verify it does not appear in `git status`).
@@ -1223,10 +1231,10 @@ Hetzner Cloud offers **Automated Backups** as a paid add-on at roughly **20% of 
 
 | Scenario | R2 logical backup | Hetzner snapshot |
 |----------|-------------------|------------------|
-| Postgres table accidentally dropped | ✅ restore dump into running DB | ⚠️ restores entire host to yesterday — everything else rolls back too |
-| MinIO objects deleted by bug | ✅ mc mirror back from R2 | ⚠️ same whole-host rollback |
-| Whole host corrupted (filesystem, failed upgrade, rm -rf wrong dir) | ❌ have to provision new box, reinstall, reconfigure, restore dumps (hours) | ✅ restore snapshot, box is back in minutes |
-| Ransomware / compromised host | ❌ need clean OS, same recovery pain | ✅ rollback to pre-compromise snapshot |
+| Postgres table accidentally dropped | - Done restore dump into running DB | ⚠️ restores entire host to yesterday — everything else rolls back too |
+| MinIO objects deleted by bug | - Done mc mirror back from R2 | ⚠️ same whole-host rollback |
+| Whole host corrupted (filesystem, failed upgrade, rm -rf wrong dir) | ❌ have to provision new box, reinstall, reconfigure, restore dumps (hours) | - Done restore snapshot, box is back in minutes |
+| Ransomware / compromised host | ❌ need clean OS, same recovery pain | - Done rollback to pre-compromise snapshot |
 | Hetzner datacenter loses the disk | ❌ R2 save us | ❌ snapshot gone too (both live in Hetzner's infra) — R2 is the off-site insurance |
 
 The two backup mechanisms cover disjoint failure modes. R2 is your **off-site data backup** — the thing that saves you if Hetzner has a catastrophic failure. Hetzner snapshots are your **fast host recovery** — the thing that saves you if you break the host with a bad command. Having both is cheap (~€1.60/mo on top of the server cost) and the recovery time difference is enormous: snapshot restore is minutes, full rebuild from scratch + R2 restore is hours-to-days.
@@ -1578,7 +1586,7 @@ Write `ai-docs/operations/hetzner-runbook.md` (new file). Contents:
 - **Restore from R2 backup (logical)**: full procedure (postgres + MinIO + encrypted `.env`, with the exact `mc`, `pg_restore`, and `age --decrypt` commands). Reference `scripts/RESTORE.md` from Task 19.
 - **Recover `.env` from encrypted backup** (from Task 13/14):
   1. `mc cp r2/<bucket>/env/<latest>.env.age ./env-backup.age`
-  2. `age --decrypt -o .env.recovered env-backup.age` (prompts for `AGE_PASSPHRASE` — copy from password manager).
+  2. `age --decrypt -i private-key.txt -o .env.recovered env-backup.age` (private key from password manager).
   3. `diff .env.recovered <current-env-on-box>` to confirm nothing unexpected diverged.
   4. `chmod 600 .env.recovered && mv .env.recovered .env` on the target box.
 - **Restore from Hetzner snapshot**: dashboard procedure (select server → Backups tab → Restore). Note: rolls back the entire host to the snapshot time, including any config or code changes made after that snapshot. After restore, `git pull` to re-apply any newer committed changes and `docker compose --profile prod up -d`. The drill for this exact procedure ran once during Task 34b — any quirks found there must be written down here.
@@ -1629,7 +1637,7 @@ Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in de
 | `mc` version drifts via Alpine package rebuilds | `mc mirror` flag semantics could change silently between redeploys | Task 12 pins `mc` to a specific `MC_RELEASE` downloaded from dl.min.io; bumps are explicit code changes |
 | SSE breaks in production because Caddyfile was committed without streaming directives | Half-day of debugging on the box instead of on laptop | Task 10 Caddyfile includes `flush_interval -1` and long read/write timeouts from day one; Task 22 verifies end-to-end against the same committed file |
 | `MINIO_EXTERNAL_ENDPOINT` interpolation composes `HOST_IP:PORT`, incompatible with the `download.follow.example` public hostname | Presigned download URLs embed `download.follow.example:9000` and fail on every client | Task 11b rewires the env var to direct pass-through; Task 28 sets the bare hostname; Task 35 verifies the embedded host in a real presigned URL |
-| Host destroyed with `.env` secrets unrecoverable | Restored DB and MinIO bucket cannot be unlocked; JWTs issued before the incident cannot be verified | Task 13 adds encrypted `.env` backup to R2 using `age`; passphrase lives in the password manager; Task 28 mandates every secret also be stored in the password manager verbatim |
+| Host destroyed with `.env` secrets unrecoverable | Restored DB and MinIO bucket cannot be unlocked; JWTs issued before the incident cannot be verified | Task 13 adds encrypted `.env` backup to R2 using `age` recipient key; private key lives in the password manager; Task 28 mandates every secret also be stored in the password manager verbatim |
 | Hetzner snapshot restore "just works" — assumed but never tested | First snapshot restore during a real outage reveals an unknown quirk | Task 34b runs the snapshot restore drill against a throwaway box before the platform is declared production-ready |
 | Cert renewal fails silently, first signal is outage | Pilot customer sees TLS errors with no prior warning | Task 37 adds a daily cert-expiry probe via healthchecks.io that alerts 15+ days before expiry — well inside Caddy's 30-day renewal window |
 | CPX21 OOMs under sustained gateway load | Host OOM killer kills the wrong process during routine bursts | Measured peak is 2.6 GiB extreme / 1.8 GiB realistic with `malloc_trim` fix; CPX21 (4GB) has 1.4-2.2 GiB headroom; live-resize to CPX31 in minutes if needed |
@@ -1689,7 +1697,7 @@ Task-count and scope changes from the previous revision:
 - **Rewritten**: Task 8 is now the Valkey persistence verification pass (formerly numbered 8b). Persistence was already enabled in compose; this task reframes as verify-and-polish with a mandatory kill-restart drill rather than a new feature.
 - **Added**: Task 11b (`MINIO_EXTERNAL_ENDPOINT` direct pass-through) to fix the bare-hostname problem in Phase 2.
 - **Added**: Task 34b (Hetzner snapshot restore drill) in Phase 6 to exercise the snapshot restore path once before production.
-- **Expanded**: Task 12 pins `mc` version via direct download, Task 13 adds encrypted `.env` backup to R2 using `age`, Task 20 rewritten with concrete file paths, Task 21 lists the four Flutter config files by path, Task 24 defaults to CPX31 after reconciling against Task 6 limits, Task 25 includes a minimal `fail2ban` config, Task 28 references the new `AGE_PASSPHRASE` and the Task 11b rewiring, Task 31 promotes laptop-side `docker save \| ssh docker load` as the default redeploy path, Task 37 adds a daily cert-expiry probe via healthchecks.io.
+- **Expanded**: Task 12 pins `mc` version via direct download, Task 13 adds encrypted `.env` backup to R2 using `age`, Task 20 rewritten with concrete file paths, Task 21 lists the four Flutter config files by path, Task 24 defaults to CPX31 after reconciling against Task 6 limits, Task 25 includes a minimal `fail2ban` config, Task 28 references the new `AGE_KEY` and the Task 11b rewiring, Task 31 promotes laptop-side `docker save \| ssh docker load` as the default redeploy path, Task 37 adds a daily cert-expiry probe via healthchecks.io.
 
 Story points: Task 22 (SSE through Caddy) remains at 3. Task 30 (Hetzner automated backups) is 1 SP. Task 8 (Valkey verification) is 1 SP. Task 11b (`MINIO_EXTERNAL_ENDPOINT` rewire) is 1 SP. Task 34b (snapshot restore drill) is 1 SP.
 
