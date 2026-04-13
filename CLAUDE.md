@@ -228,9 +228,6 @@ go test -race -cover ./...
 go mod tidy
 go run ./cmd/server -runtime-timeout 10s  # Verify startup
 
-# Integration test
-./scripts/test-image-workflow.sh -t 10s
-
 # Documentation generation
 ./docs/export-all-docs.sh
 ```
@@ -251,9 +248,6 @@ go test -race -cover ./...
 go mod tidy
 go run ./cmd/server -runtime-timeout 10s  # Verify startup
 
-# Integration tests (local mode)
-go run ./cmd/server -runtime-timeout 15s -port 8099
-GATEWAY_URL=http://localhost:8099 INTEGRATION_TEST_MODE=local go test -tags=integration -v ./tests/integration/
 ```
 
 ### follow-app
@@ -294,6 +288,12 @@ go mod tidy
 ### tests/integration (cross-repo integration tests)
 ```bash
 cd tests/integration/
+
+# Run integration tests (docker mode — uses docker compose services)
+INTEGRATION_TEST_MODE=docker go test -tags=integration -count=1 ./...
+
+# Run integration tests (local mode — uses systemd services: minio, postgresql, valkey)
+INTEGRATION_TEST_MODE=local go test -tags=integration -count=1 ./...
 
 # Quality gates (mandatory after every change)
 gofumpt -w . && golines -w --max-len=80 .
