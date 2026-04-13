@@ -1,0 +1,13 @@
+# Memory-limit override for stress testing.
+# Used via: COMPOSE_EXTRA_FILES=docker-compose.memlimit.yml
+#
+# Sets a hard 2GB cgroup limit on the gateway container.
+# The OOM killer will terminate the process if RSS exceeds this.
+# GODEBUG=gctrace=1 logs Go GC stats to stderr.
+
+services:
+  follow-image-gateway:
+    mem_limit: 2g
+    memswap_limit: 2g
+    environment:
+      - GODEBUG=gctrace=1

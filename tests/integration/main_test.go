@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -110,6 +111,7 @@ func setupLocal() {
 		"-runtime-timeout", "0",
 	)
 	gatewayProcess.Dir = gatewayDir
+	gatewayProcess.Env = gatewayEnv()
 	// Setpgid places the process in its own process group. When we later
 	// signal -pgid, both the `go run` parent and the compiled server
 	// grandchild receive the signal, so no orphaned process holds the test
@@ -184,6 +186,21 @@ func setupDocker() {
 	// touching the base compose used by the dev stack.
 	composeTestOverride := "docker-compose.test.yml"
 
+	// Optional extra compose overrides, e.g. memory-limit
+	// profiles for stress testing. Set COMPOSE_EXTRA_FILES to a
+	// comma-separated list of paths (relative to project root).
+	composeFiles := []string{composePath, composeTestOverride}
+	if extra := os.Getenv("COMPOSE_EXTRA_FILES"); extra != "" {
+		for _, f := range strings.Split(extra, ",") {
+			f = strings.TrimSpace(f)
+			abs := filepath.Join(projectRoot, f)
+			composeFiles = append(composeFiles, abs)
+			log.Info().
+				Str("file", abs).
+				Msg("docker: extra compose file added")
+		}
+	}
+
 	// Load tests/integration/.env into the process environment.
 	// This is the single source of truth for docker-mode config:
 	// test-only credentials, port overrides (25xxx/26xxx/28xxx/29xxx
@@ -218,7 +235,7 @@ func setupDocker() {
 	// them. With a pinned identifier, run N+1's Down() sees run N's
 	// leftovers via the shared compose project label and wipes them.
 	stack, err := compose.NewDockerComposeWith(
-		compose.WithStackFiles(composePath, composeTestOverride),
+		compose.WithStackFiles(composeFiles...),
 		compose.StackIdentifier("follow-integration-test"),
 	)
 	if err != nil {
@@ -481,6 +498,40 @@ func cleanValkeyStreams(addr string) {
 				Msg("deleted valkey stream for clean test run")
 		}
 	}
+}
+
+// gatewayEnv builds the environment for the gateway subprocess
+// in local mode. It forwards GATEWAY_* env vars to the gateway
+// process without affecting the test binary or the API:
+//
+//	GATEWAY_GOMEMLIMIT  → GOMEMLIMIT  (Go GC memory target)
+//	GATEWAY_GODEBUG     → GODEBUG     (e.g. gctrace=1)
+//	GATEWAY_MALLOC_TRIM → MALLOC_TRIM_THRESHOLD_ (glibc tuning)
+func gatewayEnv() []string {
+	env := os.Environ()
+
+	forwards := []struct {
+		src string
+		dst string
+	}{
+		{"GATEWAY_GOMEMLIMIT", "GOMEMLIMIT"},
+		{"GATEWAY_GODEBUG", "GODEBUG"},
+		{
+			"GATEWAY_MALLOC_TRIM",
+			"MALLOC_TRIM_THRESHOLD_",
+		},
+	}
+
+	for _, f := range forwards {
+		if v := os.Getenv(f.src); v != "" {
+			env = append(env, f.dst+"="+v)
+			log.Info().
+				Str(f.dst, v).
+				Msg("gateway: env override set")
+		}
+	}
+
+	return env
 }
 
 func envOrDefault(key, defaultVal string) string {
