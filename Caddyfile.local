@@ -1,0 +1,55 @@
+# Local testing Caddyfile — self-signed certs via tls internal.
+# Use for local prod profile smoke testing when real DNS is unavailable.
+#
+# The production Caddyfile uses domain names (api.follow-ap.com, etc.)
+# which require Let's Encrypt cert issuance. This file uses `localhost`
+# with `tls internal` (Caddy's self-signed CA) so you can test the
+# reverse proxy routing locally without real DNS or certs.
+#
+# Usage:
+#   # Stop the normal caddy container first
+#   docker compose --profile prod rm -sf caddy
+#
+#   # Start caddy with this file mounted instead
+#   docker compose --profile prod run -d \
+#     --name follow-caddy-local \
+#     -p 80:80 -p 443:443 -p "443:443/udp" \
+#     -v "$(pwd)/Caddyfile.local:/etc/caddy/Caddyfile:ro" \
+#     caddy
+#
+#   # Test
+#   curl -k https://localhost/health
+#
+#   # Cleanup
+#   docker stop follow-caddy-local && docker rm follow-caddy-local
+#   docker compose --profile prod up -d  # restore normal caddy
+#
+# Note: browsers won't trust the self-signed cert. Use curl -k or
+# install mkcert for browser-trusted local certs.
+
+localhost {
+	tls internal
+
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy follow-api:8080 {
+			flush_interval -1
+			transport http {
+				read_timeout 10m
+				write_timeout 10m
+			}
+		}
+	}
+
+	@upload path /upload/*
+	handle @upload {
+		request_body {
+			max_size 15MB
+		}
+		reverse_proxy follow-image-gateway:8090
+	}
+
+	handle {
+		reverse_proxy minio:9000
+	}
+}
