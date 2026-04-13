@@ -30,7 +30,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "${POSTGRES_HOST_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     networks:
       - internal
     logging:
@@ -67,7 +67,7 @@ services:
     volumes:
       - valkey_data:/data
     ports:
-      - "${VALKEY_HOST_PORT:-6379}:6379"
+      - "127.0.0.1:${VALKEY_HOST_PORT:-6379}:6379"
     networks:
       - internal
     logging:
@@ -98,8 +98,8 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "${MINIO_HOST_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_HOST_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     networks:
       - internal
     logging:
@@ -175,7 +175,7 @@ services:
       - FOLLOW_API_ED25519_PRIVATE_KEY=${FOLLOW_API_ED25519_PRIVATE_KEY}
       - GATEWAY_BASE_URL=http://${HOST_IP:-localhost}:${GATEWAY_HOST_PORT:-8090}
     ports:
-      - "${API_HOST_PORT:-8080}:8080"
+      - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
     networks:
       - internal
     logging:
@@ -224,7 +224,7 @@ services:
       - MINIO_BUCKET_NAME=follow-images
       - FOLLOW_API_ED25519_PUBLIC_KEY=${FOLLOW_API_ED25519_PUBLIC_KEY}
     ports:
-      - "${GATEWAY_HOST_PORT:-8090}:8090"
+      - "127.0.0.1:${GATEWAY_HOST_PORT:-8090}:8090"
     networks:
       - internal
     logging:
