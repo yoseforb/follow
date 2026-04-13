@@ -1,0 +1,23 @@
+api.follow-ap.com {
+	request_body {
+		max_size 1MB
+	}
+	reverse_proxy follow-api:8080 {
+		flush_interval -1
+		transport http {
+			read_timeout 10m
+			write_timeout 10m
+		}
+	}
+}
+
+upload.follow-ap.com {
+	request_body {
+		max_size 15MB
+	}
+	reverse_proxy follow-image-gateway:8090
+}
+
+download.follow-ap.com {
+	reverse_proxy minio:9000
+}
