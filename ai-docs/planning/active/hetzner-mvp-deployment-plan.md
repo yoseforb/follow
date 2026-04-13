@@ -979,19 +979,43 @@ Save the output in the password manager. Do NOT paste it into any committed file
 
 **Description**
 
-Pick a server size at Hetzner Cloud. For MVP+ with one pilot customer:
+Pick a server size at Hetzner Cloud. For MVP+ with one pilot customer.
 
-Realistic RAM budget for the full stack (postgres ~1-2GB, image-gateway ~200-500MB with ML models loaded, follow-api ~50-100MB, valkey ~50-100MB, MinIO ~200-300MB, OS+Docker ~500MB) totals ~3-4GB at MVP traffic. The CPU-bursty workload is the gateway's image pipeline (libvips + ONNX inference) which runs in short bursts during route creation, then idles for hours.
+#### Measured Memory Budget
 
-**Reconcile against Task 6 resource limits before picking a size**. The per-service memory caps in Task 6 sum to ~3.8GB (1.0 + 0.384 + 0.768 + 0.512 + 1.0 + 0.128). On a 4GB box that leaves ~200MB for the OS, Docker daemon, and kernel buffers — any burst that pushes a service near its limit plus normal OS overhead will trigger the host OOM killer and kill the offender (or worse, postgres) instead of the kernel politely refusing the container's allocation. **Default to CPX31** unless you have a strong reason to save the ~€3/month.
+Memory usage was benchmarked under sustained load (60 routes, ~140 images through the full ML pipeline). See [`ai-docs/research/gateway-memory-benchmark.md`](../../../ai-docs/research/gateway-memory-benchmark.md) for the full investigation.
 
-Prefer the **CPX line (AMD EPYC)** over the CX line (Intel) — at the same price point, CPX gives more vCPUs and is better for the gateway's CPU-bursty workload.
+**Measured per-service memory (with `malloc_trim` fix applied):**
 
-- **CPX31** (4 vCPU AMD shared, 8GB RAM, 160GB SSD) — ~€11/month. **Default recommendation**. Leaves ~4GB of headroom over the Task 6 limit sum, which absorbs postgres shared buffers, Linux page cache, and docker build scratch space without OOMing. Pick this and stop thinking about RAM sizing.
-- **CPX21** (3 vCPU AMD shared, 4GB RAM, 80GB SSD) — ~€8/month. Only viable if you *first* tighten Task 6 limits so the sum is ≤75% of RAM (~3GB). Otherwise the OOM headroom disappears. Live-resizable to CPX31 with one click if it turns out to be too tight.
-- **CCX13** (2 vCPU dedicated, 8GB RAM) — only if pipeline benchmarks show actual sustained vCPU contention on shared CPUs. Roughly 2-3x the price for guaranteed cores. Skip unless evidence demands it.
+| Service | Idle | Peak (sustained load) | Notes |
+|---------|------|-----------------------|-------|
+| follow-image-gateway | 100 MiB | **1.3 GiB** | ONNX + libvips CGO allocations; sawtooth 362 MiB - 1.1 GiB between jobs |
+| follow-api | 11 MiB | 35 MiB | Trivial even under heavy Valkey consuming + SSE |
+| PostgreSQL 17 | 40 MiB | 40 MiB | Will grow with `shared_buffers` tuning (~512 MiB) |
+| MinIO | 92 MiB | 220 MiB | Grows linearly with stored images |
+| Valkey 8 | 9 MiB | 11 MiB | Rock solid |
+| OS + Docker | - | ~512 MiB | Kernel, Docker daemon, page cache |
+| **Total** | **~252 MiB** | **~2.6 GiB** | |
 
-Shared vCPU is fine for this workload: bursts are seconds long, the rest of the day is idle. Hetzner allows live resizing of CPX instances, so you can always size up in minutes if the box is too tight.
+The gateway's peak RSS was originally 3.4 GiB due to glibc malloc retaining freed CGO memory. This was fixed in-code via `mallopt(M_MMAP_THRESHOLD, 65536)` + `malloc_trim(0)` per job (commit `2273fba` in follow-image-gateway), reducing peak to 1.3 GiB. The Go heap stays flat at 20-31 MiB — the CGO memory is the only significant consumer.
+
+#### Server Sizing
+
+Use the **Shared Regular Performance** plan (not Cost-Optimized, not Dedicated):
+- **Not Cost-Optimized**: older hardware; the gateway's ONNX inference benefits from newer CPUs to complete bursts faster
+- **Not Dedicated**: the workload is bursty (seconds of processing per route), not sustained; paying for guaranteed cores that idle 99% of the time is wasteful at MVP
+
+Prefer the **CPX line (AMD EPYC)** over the CX line (Intel) — at the same price point, CPX gives more vCPUs and better burst performance.
+
+- **CPX31** (4 vCPU AMD shared, 8GB RAM, 160GB SSD) — ~11 EUR/month. **Default recommendation**. 8 GB leaves ~5.4 GB headroom over the 2.6 GiB measured peak. Room for PostgreSQL `shared_buffers` tuning, Linux page cache, and `docker build` scratch space without risk of OOM.
+- **CPX21** (3 vCPU AMD shared, 4GB RAM, 80GB SSD) — ~8 EUR/month. Viable with the `malloc_trim` fix (2.6 GiB peak, 1.4 GiB headroom), but tight if PostgreSQL `shared_buffers` is tuned up or traffic spikes. Live-resizable to CPX31 with one click.
+- **CCX13** (2 vCPU dedicated, 8GB RAM) — skip. ~2-3x the price for guaranteed cores the workload doesn't need.
+
+Shared vCPU is fine: bursts are seconds long, the rest of the day is idle. Hetzner allows live resizing of CPX instances.
+
+**CPX31 benchmark reference** (Geekbench 6.3.0, AMD EPYC Zen 2): single-core 1450, multi-core 4767. Object Detection score 805 (single) / 2863 (multi). Route processing that takes ~1.3s on a dev machine (i7-11700, 16 cores) will likely take 4-6s on CPX31. Acceptable for MVP.
+
+#### Location and OS
 
 Pick a location close to the pilot customer (Hetzner has Falkenstein/Nuremberg in Germany and Helsinki in Finland for EU; Ashburn for US).
 
@@ -1584,7 +1608,7 @@ Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in de
 | Cloudflare Pages domain handshake forgotten | App serves the wrong response | Task 4 explicitly calls out the two-sided handshake; verified before Phase 5 |
 | Backup script silently broken | Customer data loss on host failure | Task 19 (restore drill) is mandatory and gates Phase 6; Task 34 adds failure alerting (last-success timestamp or healthchecks.io ping) |
 | First-deploy env var typo | Stack fails to boot | Task 17 (local prod profile test) catches this before touching Hetzner |
-| Postgres OOM under image processing load | DB crash, data loss risk | Task 6 (resource limits) caps everything; Task 24 defaults to CPX31 (8GB) to stay well clear of the ~3.8GB limit-sum; CPX21 only acceptable if Task 6 limits are tightened first |
+| Postgres OOM under image processing load | DB crash, data loss risk | Task 6 (resource limits) caps everything; Task 24 defaults to CPX31 (8GB) with ~5.4 GB headroom over the measured 2.6 GiB peak (see `ai-docs/research/gateway-memory-benchmark.md`); gateway `malloc_trim` fix must be deployed |
 | SSE long-lived connections die through Caddy | Status streaming broken in production | Task 22 verifies SSE locally through self-signed Caddy before Hetzner (includes Caddy buffering + idle timeout checks) |
 | ufw blocks port 80, Let's Encrypt HTTP-01 fails | Cert issuance fails | Task 25 explicitly opens 80 and 443 |
 | User locks themselves out via SSH hardening | Manual recovery via Hetzner console | Test the hardened SSH config from a SECOND terminal before closing the original session |
@@ -1607,7 +1631,7 @@ Also write `scripts/RESTORE.md` documenting the restore drill from Task 19 in de
 | Host destroyed with `.env` secrets unrecoverable | Restored DB and MinIO bucket cannot be unlocked; JWTs issued before the incident cannot be verified | Task 13 adds encrypted `.env` backup to R2 using `age`; passphrase lives in the password manager; Task 28 mandates every secret also be stored in the password manager verbatim |
 | Hetzner snapshot restore "just works" — assumed but never tested | First snapshot restore during a real outage reveals an unknown quirk | Task 34b runs the snapshot restore drill against a throwaway box before the platform is declared production-ready |
 | Cert renewal fails silently, first signal is outage | Pilot customer sees TLS errors with no prior warning | Task 37 adds a daily cert-expiry probe via healthchecks.io that alerts 15+ days before expiry — well inside Caddy's 30-day renewal window |
-| CPX21 OOMs under Task 6 resource limits (sum ~3.8GB on 4GB host) | Host OOM killer kills the wrong process during routine bursts | Task 24 defaults to CPX31 (8GB) and requires explicit Task 6 tightening before picking CPX21 |
+| CPX21 OOMs under sustained gateway load | Host OOM killer kills the wrong process during routine bursts | Measured peak is 2.6 GiB with `malloc_trim` fix; CPX21 (4GB) is viable but tight — CPX31 (8GB) is the default for safety margin |
 | On-box `docker compose build` takes 10-15 min per redeploy, blocks hot-fixes | Slow iteration, risk of panicked abort mid-build | Task 31 promotes `docker save \| ssh docker load` from laptop as the default redeploy path; runbook documents it as the primary procedure |
 
 ---
