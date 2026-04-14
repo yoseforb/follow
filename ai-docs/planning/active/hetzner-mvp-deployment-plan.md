@@ -54,6 +54,8 @@ The deployment target is **one Hetzner VPS**. Not Kubernetes, not multi-region, 
 
 The download hostname is required because the Flutter app downloads images from MinIO directly using presigned URLs issued by follow-api. Those URLs must embed a publicly reachable host — `minio:9000` is only reachable inside the Docker network. The `MINIO_EXTERNAL_ENDPOINT` env var controls the host that gets embedded in presigned URLs; on the production box it must point at `download.follow.example` (with `MINIO_USE_SSL=true` so the scheme comes out as `https`).
 
+> **Note (follow-api SSL split)**: follow-api now has a separate `MINIO_EXTERNAL_USE_SSL` flag for the presign client, distinct from `MINIO_USE_SSL` (which governs the internal client connecting to `minio:9000`). For this Hetzner+Caddy deployment, **no change is needed** — `MINIO_EXTERNAL_USE_SSL` defaults to `MINIO_USE_SSL` when unset, so setting `MINIO_USE_SSL=true` alone continues to produce `https://` presigned URLs correctly. The split exists to support edge-proxy/tunnel topologies (e.g., Cloudflare Tunnel) where internal traffic is HTTP but presigned URLs must be HTTPS — see the home-PC deployment plan for that case.
+
 ### Deployment philosophy
 
 - **Single `docker-compose.yml`** with `profiles: [prod]` for prod-only services (Caddy, backup sidecar). No separate `docker-compose.prod.yml`.
