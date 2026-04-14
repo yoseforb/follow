@@ -171,6 +171,7 @@ services:
       - MINIO_ACCESS_KEY_ID=${MINIO_ACCESS_KEY_ID}
       - MINIO_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY}
       - MINIO_USE_SSL=${MINIO_USE_SSL}
+      - MINIO_EXTERNAL_USE_SSL=${MINIO_EXTERNAL_USE_SSL:-${MINIO_USE_SSL}}
       - MINIO_BUCKET_NAME=${MINIO_BUCKET_NAME}
       - JWT_SECRET=${JWT_SECRET}
       - FOLLOW_API_ED25519_PRIVATE_KEY=${FOLLOW_API_ED25519_PRIVATE_KEY}
@@ -287,20 +288,13 @@ services:
         limits:
           memory: 256m
 
-  # ── Reverse Proxy (prod only) ────────────────────────────────────
-
-  caddy:
-    image: caddy:2-alpine
+  cloudflared:
+    image: cloudflare/cloudflared:latest
     profiles: [prod]
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"   # HTTP/3
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     networks:
       - internal
     depends_on:
@@ -315,6 +309,7 @@ services:
       resources:
         limits:
           memory: 128m
+          cpus: "0.5"
 
 # ── Volumes ────────────────────────────────────────────────────────
 
@@ -324,10 +319,6 @@ volumes:
   valkey_data:
     driver: local
   minio_data:
-    driver: local
-  caddy_data:
-    driver: local
-  caddy_config:
     driver: local
 
 # ── Networks ───────────────────────────────────────────────────────
