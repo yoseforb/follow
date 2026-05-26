@@ -22,6 +22,43 @@ but the following must already be up (typically via systemd or the root
 - **PostgreSQL** on `localhost:5432`
 - **MinIO** on `localhost:9000` (bucket `follow-images` must exist)
 - **Valkey** on `localhost:6379`
+- **Mailpit** on SMTP `localhost:1025`, REST API `localhost:8025`
+
+#### Installing Mailpit locally (systemd)
+
+```bash
+# Install via package manager (AUR / brew / apt depending on distro)
+# Arch Linux (AUR):
+yay -S mailpit
+
+# macOS:
+brew install mailpit
+
+# Or download the binary directly:
+# https://github.com/axllent/mailpit/releases
+
+# Start with systemd (create /etc/systemd/system/mailpit.service):
+# [Unit]
+# Description=Mailpit SMTP/API test mail server
+# After=network.target
+#
+# [Service]
+# ExecStart=/usr/bin/mailpit --smtp 0.0.0.0:1025 --listen 0.0.0.0:8025
+# Restart=on-failure
+#
+# [Install]
+# WantedBy=multi-user.target
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now mailpit
+
+# Verify:
+curl -s http://localhost:8025/api/v1/messages | head -c 80
+```
+
+Set `MAILPIT_URL=http://localhost:8025` in your environment (or rely on the
+default in the test suite) so tests can retrieve intercepted emails via the
+Mailpit REST API.
 
 ### Docker mode (CI/CD)
 
@@ -105,6 +142,9 @@ All configuration comes from `tests/integration/.env`. Relevant keys:
 | `POSTGRES_HOST_PORT` / `VALKEY_HOST_PORT` | Host ports exposed by compose (offset from dev)  |
 | `MINIO_HOST_PORT` / `MINIO_CONSOLE_HOST_PORT` | MinIO host ports                             |
 | `API_HOST_PORT` / `GATEWAY_HOST_PORT`     | App service host ports                           |
+| `MAILPIT_SMTP_HOST_PORT`                  | Mailpit SMTP host port (default 21025)           |
+| `MAILPIT_API_HOST_PORT`                   | Mailpit REST API host port (default 28025)       |
+| `MAILPIT_URL`                             | Base URL for Mailpit REST API email retrieval    |
 | `*_CONTAINER_NAME`                        | `*-test` suffixed names — avoid dev-stack clash  |
 | `NETWORK_NAME`                            | Test-only compose network name                   |
 | `HOST_IP`                                 | Forced to `localhost` so presigned URLs resolve  |

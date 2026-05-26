@@ -15,7 +15,36 @@
 # anonymous-user endpoint hundreds of times without tripping 429s.
 
 services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: ${MAILPIT_CONTAINER_NAME:-follow-mailpit-test}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_HOST_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILPIT_API_HOST_PORT:-8025}:8025"
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8025/api/v1/messages"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   follow-api:
+    depends_on:
+      mailpit:
+        condition: service_healthy
     environment:
       # Tests hit POST /api/v1/users/anonymous many times in a single
       # run. Rate limiting would cause spurious 429s in tests that are
@@ -30,4 +59,8 @@ services:
       # resource limits (cpus: 2.0). Local mode has no limits so 2s
       # works there. 15s accommodates the slowest observed stage.
       - REAPER_STALE_THRESHOLD=15s
+      # SMTP — routed to Mailpit for test interception.
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - SMTP_FROM=noreply@follow.app
 
