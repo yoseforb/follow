@@ -5,6 +5,7 @@ package integration_test
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -84,7 +85,7 @@ func syncRoutes(
 //  7. UserA deletes one route
 //  8. UserB syncs → deleted route in "not_found"
 //
-//nolint:maintidx,gocognit,gocyclo,cyclop
+//nolint:maintidx // intentionally long: covers 8-step sync scenario end-to-end
 func TestSync_TwoRoutes_VersionProgression(t *testing.T) {
 	// Step 1: Create users
 	t.Log("Step 1: Create users")
@@ -206,10 +207,10 @@ func TestSync_TwoRoutes_VersionProgression(t *testing.T) {
 	require.Len(t, syncResp1.Updated, 2,
 		"both routes should be in updated when syncing at version 0",
 	)
-	require.Len(t, syncResp1.Unchanged, 0,
+	require.Empty(t, syncResp1.Unchanged,
 		"no routes should be unchanged at version 0",
 	)
-	require.Len(t, syncResp1.NotFound, 0,
+	require.Empty(t, syncResp1.NotFound,
 		"no routes should be not_found",
 	)
 
@@ -240,13 +241,13 @@ func TestSync_TwoRoutes_VersionProgression(t *testing.T) {
 	)
 
 	// Both routes should be in "unchanged" (version match)
-	require.Len(t, syncResp2.Updated, 0,
+	require.Empty(t, syncResp2.Updated,
 		"no routes should be updated with matching versions",
 	)
 	require.Len(t, syncResp2.Unchanged, 2,
 		"both routes should be unchanged",
 	)
-	require.Len(t, syncResp2.NotFound, 0,
+	require.Empty(t, syncResp2.NotFound,
 		"no routes should be not_found",
 	)
 
@@ -316,7 +317,7 @@ func TestSync_TwoRoutes_VersionProgression(t *testing.T) {
 	require.Len(t, syncResp3.Unchanged, 1,
 		"unmodified route should be in unchanged",
 	)
-	require.Len(t, syncResp3.NotFound, 0,
+	require.Empty(t, syncResp3.NotFound,
 		"no routes should be not_found",
 	)
 
@@ -364,7 +365,7 @@ func TestSync_TwoRoutes_VersionProgression(t *testing.T) {
 	)
 
 	// Route 1 should be in "not_found", Route 2 in "unchanged"
-	require.Len(t, syncResp4.Updated, 0,
+	require.Empty(t, syncResp4.Updated,
 		"no routes should be updated",
 	)
 	require.Len(t, syncResp4.Unchanged, 1,
@@ -389,10 +390,5 @@ func TestSync_TwoRoutes_VersionProgression(t *testing.T) {
 
 // containsString returns true if the slice contains the given string.
 func containsString(slice []string, target string) bool {
-	for _, s := range slice {
-		if s == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, target)
 }

@@ -303,35 +303,6 @@ func getRouteVersion(
 	return int(version)
 }
 
-// getRouteWaypointCount retrieves total_waypoints from the route response.
-func getRouteWaypointCount(
-	t *testing.T,
-	routeID string,
-	authToken string,
-) int {
-	t.Helper()
-
-	resp := doRequest(
-		t,
-		http.MethodGet,
-		apiURL+"/api/v1/routes/"+routeID,
-		nil,
-		authToken,
-	)
-
-	var body map[string]any
-
-	err := json.NewDecoder(resp.Body).Decode(&body)
-	resp.Body.Close()
-	require.NoError(t, err,
-		"getRouteWaypointCount: failed to decode route response",
-	)
-
-	count, _ := body["total_waypoints"].(float64)
-
-	return int(count)
-}
-
 // TestRevision_HappyPath_AllExistingImages tests the full revision lifecycle
 // where all waypoints reuse existing (already-processed) images.
 // The revision should become "ready" immediately without image upload,
