@@ -618,3 +618,478 @@ func TestPasswordResetFlow(t *testing.T) {
 	)
 	oldPwResp.Body.Close()
 }
+
+// --- Error / edge-case tests below ---
+
+// TestRegisterAlreadyRegistered verifies that a fully
+// registered user cannot register again (terminal state).
+func TestRegisterAlreadyRegistered(t *testing.T) {
+	clearMailbox(t)
+
+	_, token := createAnonymousUser(t)
+	email := uniqueEmail()
+	regToken := registerAndConfirm(t, token, email)
+
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/register",
+		map[string]any{
+			"email":    "other-" + uniqueEmail(),
+			"password": testPassword,
+		},
+		regToken,
+	)
+	require.Equal(t,
+		http.StatusConflict, resp.StatusCode,
+		"registered user re-register must return 409",
+	)
+
+	body := decodeJSON(t, resp)
+	assert.Equal(t, "already_registered", body["name"])
+}
+
+// TestRegisterAlreadyPending verifies that a pending user
+// cannot start registration a second time.
+func TestRegisterAlreadyPending(t *testing.T) {
+	clearMailbox(t)
+
+	_, token := createAnonymousUser(t)
+	email := uniqueEmail()
+
+	// First register → pending
+	regResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/register",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		token,
+	)
+	require.Equal(t, http.StatusOK, regResp.StatusCode)
+	regResp.Body.Close()
+
+	// Second register → 409
+	dupResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/register",
+		map[string]any{
+			"email":    "other-" + uniqueEmail(),
+			"password": testPassword,
+		},
+		token,
+	)
+	require.Equal(t,
+		http.StatusConflict, dupResp.StatusCode,
+		"pending user re-register must return 409",
+	)
+
+	body := decodeJSON(t, dupResp)
+	assert.Equal(t,
+		"registration_already_started", body["name"],
+	)
+}
+
+// TestRegisterNoAuth verifies that register without a JWT
+// returns 401.
+func TestRegisterNoAuth(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/register",
+		map[string]any{
+			"email":    uniqueEmail(),
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized, resp.StatusCode,
+		"register without JWT must return 401",
+	)
+	resp.Body.Close()
+}
+
+// TestRegisterInvalidEmail verifies that a malformed email
+// is rejected with 400.
+func TestRegisterInvalidEmail(t *testing.T) {
+	_, token := createAnonymousUser(t)
+
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/register",
+		map[string]any{
+			"email":    "not-an-email",
+			"password": testPassword,
+		},
+		token,
+	)
+	require.Equal(t,
+		http.StatusBadRequest, resp.StatusCode,
+		"invalid email must return 400",
+	)
+	resp.Body.Close()
+}
+
+// TestRegisterShortPassword verifies that a password shorter
+// than 8 characters is rejected.
+func TestRegisterShortPassword(t *testing.T) {
+	_, token := createAnonymousUser(t)
+
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/register",
+		map[string]any{
+			"email":    uniqueEmail(),
+			"password": "short",
+		},
+		token,
+	)
+	require.Equal(t,
+		http.StatusBadRequest, resp.StatusCode,
+		"short password must return 400",
+	)
+	resp.Body.Close()
+}
+
+// TestConfirmNotPending verifies that an anonymous user
+// (not pending) cannot confirm registration.
+func TestConfirmNotPending(t *testing.T) {
+	_, token := createAnonymousUser(t)
+
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/confirm-registration",
+		map[string]any{"code": "123456"},
+		token,
+	)
+	require.Equal(t,
+		http.StatusBadRequest, resp.StatusCode,
+		"confirm on anonymous user must return 400",
+	)
+
+	body := decodeJSON(t, resp)
+	assert.Equal(t,
+		"registration_not_started", body["name"],
+	)
+}
+
+// TestResendNotPending verifies that an anonymous user
+// cannot resend a verification code.
+func TestResendNotPending(t *testing.T) {
+	_, token := createAnonymousUser(t)
+
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/resend-verification",
+		map[string]any{},
+		token,
+	)
+	require.Equal(t,
+		http.StatusBadRequest, resp.StatusCode,
+		"resend on anonymous user must return 400",
+	)
+
+	body := decodeJSON(t, resp)
+	assert.Equal(t,
+		"registration_not_started", body["name"],
+	)
+}
+
+// TestLoginNonExistentEmail verifies that login with an
+// unknown email returns 401 (never leaks email existence).
+func TestLoginNonExistentEmail(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    "nobody-" + uniqueEmail(),
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized, resp.StatusCode,
+		"non-existent email login must return 401",
+	)
+
+	body := decodeJSON(t, resp)
+	assert.Equal(t, "invalid_credentials", body["name"])
+}
+
+// TestForgotPasswordNonExistentEmail verifies that
+// forgot-password with an unknown email still returns 204
+// (never leaks email existence).
+func TestForgotPasswordNonExistentEmail(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{
+			"email": "nobody-" + uniqueEmail(),
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, resp.StatusCode,
+		"forgot-password for unknown email must return 204",
+	)
+	resp.Body.Close()
+}
+
+// TestForgotPasswordAnonymousUser verifies that
+// forgot-password for an anonymous user (not registered)
+// returns 204 silently.
+func TestForgotPasswordAnonymousUser(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{
+			"email": uniqueEmail(),
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, resp.StatusCode,
+		"forgot-password for anonymous must return 204",
+	)
+	resp.Body.Close()
+}
+
+// TestResetPasswordWrongCode verifies that reset-password
+// with a wrong code returns 400.
+func TestResetPasswordWrongCode(t *testing.T) {
+	clearMailbox(t)
+
+	_, token := createAnonymousUser(t)
+	email := uniqueEmail()
+	_ = registerAndConfirm(t, token, email)
+
+	clearMailbox(t)
+
+	forgotResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{"email": email},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, forgotResp.StatusCode,
+	)
+	forgotResp.Body.Close()
+
+	// Wait for email to confirm code was sent
+	_ = waitForEmail(t, email)
+
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/reset-password",
+		map[string]any{
+			"email":        email,
+			"code":         "000000",
+			"new_password": "newpassword123",
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusBadRequest, resp.StatusCode,
+		"reset with wrong code must return 400",
+	)
+
+	body := decodeJSON(t, resp)
+	assert.Equal(t, "invalid_code", body["name"])
+}
+
+// TestResetPasswordShortNewPassword verifies that
+// reset-password rejects a new password shorter than 8
+// characters.
+func TestResetPasswordShortNewPassword(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/reset-password",
+		map[string]any{
+			"email":        uniqueEmail(),
+			"code":         "123456",
+			"new_password": "short",
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusBadRequest, resp.StatusCode,
+		"reset with short password must return 400",
+	)
+	resp.Body.Close()
+}
+
+// TestRegisteredTokenWorksForAuthEndpoints verifies that
+// the JWT returned by confirm-registration and login can
+// be used for authenticated endpoints.
+func TestRegisteredTokenWorksForAuthEndpoints(t *testing.T) {
+	clearMailbox(t)
+
+	userID, token := createAnonymousUser(t)
+	email := uniqueEmail()
+	regToken := registerAndConfirm(t, token, email)
+
+	// Use registered token to GET own user
+	getResp := doRequest(
+		t, http.MethodGet,
+		apiURL+"/api/v1/users/anonymous/"+userID,
+		nil,
+		regToken,
+	)
+	require.Equal(t,
+		http.StatusOK, getResp.StatusCode,
+		"registered token must access user endpoint",
+	)
+	getResp.Body.Close()
+
+	// Use registered token to refresh
+	refreshResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{},
+		regToken,
+	)
+	require.Equal(t,
+		http.StatusOK, refreshResp.StatusCode,
+		"registered token must refresh",
+	)
+	refreshResp.Body.Close()
+
+	// Login and verify that token also works
+	loginResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t, http.StatusOK, loginResp.StatusCode)
+
+	loginBody := decodeJSON(t, loginResp)
+
+	loginToken, _ := loginBody["token"].(string)
+	require.NotEmpty(t, loginToken)
+
+	// Login token can also access endpoints
+	getResp2 := doRequest(
+		t, http.MethodGet,
+		apiURL+"/api/v1/users/anonymous/"+userID,
+		nil,
+		loginToken,
+	)
+	require.Equal(t,
+		http.StatusOK, getResp2.StatusCode,
+		"login token must access user endpoint",
+	)
+	getResp2.Body.Close()
+}
+
+// TestLoginInvalidEmailFormat verifies that login with a
+// malformed email returns 400.
+func TestLoginInvalidEmailFormat(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    "not-an-email",
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusBadRequest, resp.StatusCode,
+		"login with invalid email must return 400",
+	)
+	resp.Body.Close()
+}
+
+// TestForgotPasswordInvalidEmail verifies that
+// forgot-password with a malformed email returns 400.
+func TestForgotPasswordInvalidEmail(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{
+			"email": "not-an-email",
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusBadRequest, resp.StatusCode,
+		"forgot-password with invalid email must return 400",
+	)
+	resp.Body.Close()
+}
+
+// TestResendTooSoon verifies that resending a verification
+// code before the cooldown expires returns 429.
+func TestResendTooSoon(t *testing.T) {
+	clearMailbox(t)
+
+	_, token := createAnonymousUser(t)
+	email := uniqueEmail()
+
+	regResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/register",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		token,
+	)
+	require.Equal(t, http.StatusOK, regResp.StatusCode)
+	regResp.Body.Close()
+
+	// Resend immediately — should be too soon
+	// (AUTH_RESEND_COOLDOWN=1s in test env, but we call
+	// within milliseconds of register)
+	resendResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/resend-verification",
+		map[string]any{},
+		token,
+	)
+	require.Equal(t,
+		http.StatusTooManyRequests,
+		resendResp.StatusCode,
+		"immediate resend must return 429",
+	)
+
+	body := decodeJSON(t, resendResp)
+	assert.Equal(t, "resend_too_soon", body["name"])
+}
+
+// TestConfirmNoAuth verifies that confirm-registration
+// without a JWT returns 401.
+func TestConfirmNoAuth(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/confirm-registration",
+		map[string]any{"code": "123456"},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized, resp.StatusCode,
+		"confirm without JWT must return 401",
+	)
+	resp.Body.Close()
+}
+
+// TestResendNoAuth verifies that resend-verification
+// without a JWT returns 401.
+func TestResendNoAuth(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/resend-verification",
+		map[string]any{},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized, resp.StatusCode,
+		"resend without JWT must return 401",
+	)
+	resp.Body.Close()
+}
