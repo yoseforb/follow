@@ -45,6 +45,10 @@ services:
     depends_on:
       mailpit:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512m
     environment:
       # Tests hit POST /api/v1/users/anonymous many times in a single
       # run. Rate limiting would cause spurious 429s in tests that are
@@ -63,4 +67,7 @@ services:
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
       - SMTP_FROM=noreply@follow.app
+      # Short resend cooldown so verification-code tests
+      # don't wait 60s between register and resend.
+      - AUTH_RESEND_COOLDOWN=1s
 

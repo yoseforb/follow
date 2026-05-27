@@ -28,6 +28,7 @@ var (
 	apiURL        string
 	gatewayURL    string
 	valkeyAddress string
+	mailpitURL    string
 )
 
 // Lifecycle handles — used only by setup/teardown.
@@ -83,6 +84,10 @@ func setupLocal() {
 	gatewayURL = envOrDefault(
 		"GATEWAY_URL",
 		"http://localhost:8095",
+	)
+	mailpitURL = envOrDefault(
+		"MAILPIT_URL",
+		"http://localhost:8025",
 	)
 
 	apiPort := portFromURL(apiURL, "8085")
@@ -144,6 +149,7 @@ func setupLocal() {
 		"REAPER_STALE_THRESHOLD=2s",
 		"RECLAIMER_IDLE_TIMEOUT=5s",
 		"RECLAIMER_SCAN_INTERVAL=2s",
+		"AUTH_RESEND_COOLDOWN=1s",
 	)
 	// Setpgid places the process in its own process group. When we later
 	// signal -pgid, both the `go run` parent and the compiled server
@@ -169,6 +175,7 @@ func setupLocal() {
 		Str("api_url", apiURL).
 		Str("gateway_url", gatewayURL).
 		Str("valkey", valkeyAddress).
+		Str("mailpit_url", mailpitURL).
 		Msg("local mode setup complete")
 }
 
@@ -283,6 +290,7 @@ func setupDocker() {
 	valkeyAddress = hostIP + ":" + envMap["VALKEY_HOST_PORT"]
 	apiURL = "http://" + hostIP + ":" + envMap["API_HOST_PORT"]
 	gatewayURL = "http://" + hostIP + ":" + envMap["GATEWAY_HOST_PORT"]
+	mailpitURL = "http://" + hostIP + ":" + envMap["MAILPIT_API_HOST_PORT"]
 
 	// Match setupLocal: wipe any stale image:result / image:result:dlq
 	// streams so the API consumer group starts with a fresh watermark.
@@ -295,6 +303,7 @@ func setupDocker() {
 		Str("api_url", apiURL).
 		Str("gateway_url", gatewayURL).
 		Str("valkey", valkeyAddress).
+		Str("mailpit_url", mailpitURL).
 		Msg("docker mode setup complete")
 }
 

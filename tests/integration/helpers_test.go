@@ -116,7 +116,12 @@ func doRequest(
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
 
 	resp, err := client.Do(req)
 	require.NoErrorf(t, err,
@@ -401,7 +406,12 @@ func uploadToGateway(
 		"Bearer "+uploadToken,
 	)
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
