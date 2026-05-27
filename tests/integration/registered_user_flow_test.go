@@ -3,8 +3,10 @@
 package integration_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -1092,4 +1094,278 @@ func TestResendNoAuth(t *testing.T) {
 		"resend without JWT must return 401",
 	)
 	resp.Body.Close()
+}
+
+// --- Concurrency and idempotency tests below ---
+
+// TestConcurrentRegisterSameEmail verifies that when two
+// anonymous users race to register the same email, exactly
+// one succeeds (200) and the other gets 409 (email_taken).
+func TestConcurrentRegisterSameEmail(t *testing.T) {
+	clearMailbox(t)
+
+	email := uniqueEmail()
+
+	const racers = 5
+
+	type result struct {
+		status int
+	}
+
+	results := make(chan result, racers)
+
+	// Create N anonymous users upfront
+	tokens := make([]string, racers)
+	for i := range racers {
+		_, tok := createAnonymousUser(t)
+		tokens[i] = tok
+	}
+
+	// Fire all registrations concurrently.
+	// doRequest uses require (can't call from goroutines),
+	// so we build and send requests manually here.
+	var wg sync.WaitGroup
+
+	wg.Add(racers)
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+
+	for i := range racers {
+		go func(token string) {
+			defer wg.Done()
+
+			body, _ := json.Marshal(map[string]any{
+				"email":    email,
+				"password": testPassword,
+			})
+
+			req, err := http.NewRequest(
+				http.MethodPost,
+				apiURL+"/api/v1/auth/register",
+				bytes.NewReader(body),
+			)
+			if err != nil {
+				results <- result{status: -1}
+				return
+			}
+
+			req.Header.Set(
+				"Content-Type", "application/json",
+			)
+			req.Header.Set(
+				"Authorization", "Bearer "+token,
+			)
+
+			resp, err := client.Do(req)
+			if err != nil {
+				results <- result{status: -1}
+				return
+			}
+			resp.Body.Close()
+
+			results <- result{status: resp.StatusCode}
+		}(tokens[i])
+	}
+
+	wg.Wait()
+	close(results)
+
+	var ok, conflict, other int
+
+	for r := range results {
+		switch r.status {
+		case http.StatusOK:
+			ok++
+		case http.StatusConflict:
+			conflict++
+		default:
+			other++
+			t.Errorf(
+				"unexpected status %d from racer",
+				r.status,
+			)
+		}
+	}
+
+	assert.Equal(t, 1, ok,
+		"exactly one racer must succeed (200)",
+	)
+	assert.Equal(t, racers-1, conflict,
+		"all other racers must get 409",
+	)
+	assert.Equal(t, 0, other,
+		"no unexpected status codes",
+	)
+}
+
+// TestConfirmRegistrationIdempotency verifies that calling
+// confirm-registration a second time with the same code
+// after the first success fails (verification record was
+// deleted on first confirm).
+func TestConfirmRegistrationIdempotency(t *testing.T) {
+	clearMailbox(t)
+
+	_, token := createAnonymousUser(t)
+	email := uniqueEmail()
+
+	// Register
+	regResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/register",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		token,
+	)
+	require.Equal(t, http.StatusOK, regResp.StatusCode)
+	regResp.Body.Close()
+
+	msgID := waitForEmail(t, email)
+	code := extractVerificationCode(t, msgID)
+
+	// First confirm → success
+	firstResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/confirm-registration",
+		map[string]any{"code": code},
+		token,
+	)
+	require.Equal(t,
+		http.StatusOK, firstResp.StatusCode,
+		"first confirm must succeed",
+	)
+
+	firstBody := decodeJSON(t, firstResp)
+
+	regToken, _ := firstBody["token"].(string)
+	require.NotEmpty(t, regToken)
+
+	// Second confirm with same code → must fail.
+	// User is now registered (terminal state), so this
+	// should return 409 (already_registered) or 400
+	// (registration_not_started) depending on which guard
+	// fires first.
+	secondResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/confirm-registration",
+		map[string]any{"code": code},
+		regToken,
+	)
+
+	// Accept either 409 (already_registered — user is now
+	// registered) or 400 (registration_not_started — user
+	// is no longer pending). Both are correct rejections.
+	status := secondResp.StatusCode
+	secondResp.Body.Close()
+
+	assert.True(t,
+		status == http.StatusConflict ||
+			status == http.StatusBadRequest,
+		"second confirm must fail (got %d)", status,
+	)
+}
+
+// TestResetPasswordIdempotency verifies that using the
+// same reset code twice fails on the second attempt
+// (verification record deleted after first reset).
+func TestResetPasswordIdempotency(t *testing.T) {
+	clearMailbox(t)
+
+	_, token := createAnonymousUser(t)
+	email := uniqueEmail()
+	_ = registerAndConfirm(t, token, email)
+
+	clearMailbox(t)
+
+	// Request password reset
+	forgotResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{"email": email},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, forgotResp.StatusCode,
+	)
+	forgotResp.Body.Close()
+
+	msgID := waitForEmail(t, email)
+	code := extractVerificationCode(t, msgID)
+
+	// First reset → success
+	firstResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/reset-password",
+		map[string]any{
+			"email":        email,
+			"code":         code,
+			"new_password": "firstnewpass123",
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, firstResp.StatusCode,
+		"first reset must succeed",
+	)
+	firstResp.Body.Close()
+
+	// Second reset with same code → must fail
+	secondResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/reset-password",
+		map[string]any{
+			"email":        email,
+			"code":         code,
+			"new_password": "secondnewpass456",
+		},
+		"",
+	)
+
+	// Verification record was deleted; expect 400
+	// (invalid_code or code_expired) or similar.
+	assert.NotEqual(t,
+		http.StatusNoContent,
+		secondResp.StatusCode,
+		"second reset with same code must fail",
+	)
+	secondResp.Body.Close()
+
+	// Verify the first password is the one that stuck
+	loginResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": "firstnewpass123",
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusOK, loginResp.StatusCode,
+		"login with first new password must work",
+	)
+	loginResp.Body.Close()
+
+	// Second password must NOT work
+	loginResp2 := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": "secondnewpass456",
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized,
+		loginResp2.StatusCode,
+		"login with second password must fail",
+	)
+	loginResp2.Body.Close()
 }
