@@ -6,7 +6,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1368,4 +1372,229 @@ func TestResetPasswordIdempotency(t *testing.T) {
 		"login with second password must fail",
 	)
 	loginResp2.Body.Close()
+}
+
+// --- Token expiry tests below ---
+// These tests restart follow-api with JWT_ACCESS_TOKEN_TTL=2s,
+// run the expiry subtests, then restore the normal API.
+// Local mode only — docker mode cannot restart individual
+// containers mid-test.
+
+// restartAPIProcess kills the current follow-api subprocess
+// and starts a new one with the given extra env vars.
+// Local mode only — docker compose cannot cleanly restart
+// a single container without reconciling the full project.
+func restartAPIProcess(
+	t *testing.T,
+	extraEnv ...string,
+) {
+	t.Helper()
+
+	killProcessGroup(
+		"follow-api", apiProcess, apiDrainWait,
+	)
+
+	projectRoot, err := filepath.Abs(
+		filepath.Join("..", ".."),
+	)
+	require.NoError(t, err)
+
+	apiDir := filepath.Join(projectRoot, "follow-api")
+	apiPort := portFromURL(apiURL, "8085")
+	gatewayPort := portFromURL(gatewayURL, "8095")
+
+	apiProcess = exec.Command(
+		"go", "run", "./cmd/server",
+		"-host", "localhost",
+		"-port", apiPort,
+		"-log-level", "debug",
+		"-runtime-timeout", "0",
+	)
+	apiProcess.Dir = apiDir
+	apiProcess.Env = append(
+		os.Environ(),
+		"GATEWAY_BASE_URL=http://localhost:"+gatewayPort,
+		"RATE_LIMIT_ENABLED=false",
+		"REAPER_SCAN_INTERVAL=1s",
+		"REAPER_STALE_THRESHOLD=2s",
+		"RECLAIMER_IDLE_TIMEOUT=5s",
+		"RECLAIMER_SCAN_INTERVAL=2s",
+		"AUTH_RESEND_COOLDOWN=1s",
+	)
+	apiProcess.Env = append(
+		apiProcess.Env, extraEnv...,
+	)
+	apiProcess.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+	apiDrainWait = pipeOutput(apiProcess)
+
+	err = apiProcess.Start()
+	require.NoError(t, err,
+		"restartAPIProcess: failed to start",
+	)
+
+	waitForService(apiURL + "/health")
+}
+
+// TestTokenExpiry restarts the API with a 2s JWT TTL, runs
+// all expiry subtests, then restores the normal API.
+func TestTokenExpiry(t *testing.T) {
+	if envOrDefault("INTEGRATION_TEST_MODE", "local") != "local" {
+		t.Skip(
+			"token expiry tests require API restart " +
+				"(local mode only)",
+		)
+	}
+
+	restartAPIProcess(t, "JWT_ACCESS_TOKEN_TTL=2s")
+	t.Cleanup(func() {
+		restartAPIProcess(t)
+	})
+
+	t.Run("AnonymousToken", func(t *testing.T) {
+		_, token := createAnonymousUser(t)
+
+		resp := doRequest(
+			t, http.MethodPost,
+			apiURL+"/api/v1/routes/prepare",
+			map[string]any{},
+			token,
+		)
+		require.Equal(t,
+			http.StatusOK, resp.StatusCode,
+			"fresh anonymous token must work",
+		)
+		resp.Body.Close()
+
+		time.Sleep(3 * time.Second)
+
+		expResp := doRequest(
+			t, http.MethodPost,
+			apiURL+"/api/v1/routes/prepare",
+			map[string]any{},
+			token,
+		)
+		require.Equal(t,
+			http.StatusUnauthorized,
+			expResp.StatusCode,
+			"expired anonymous token must return 401",
+		)
+		expResp.Body.Close()
+	})
+
+	t.Run("RegisteredToken", func(t *testing.T) {
+		clearMailbox(t)
+
+		userID, anonToken := createAnonymousUser(t)
+		email := uniqueEmail()
+		regToken := registerAndConfirm(
+			t, anonToken, email,
+		)
+
+		resp := doRequest(
+			t, http.MethodGet,
+			apiURL+"/api/v1/users/anonymous/"+userID,
+			nil, regToken,
+		)
+		require.Equal(t,
+			http.StatusOK, resp.StatusCode,
+			"fresh registered token must work",
+		)
+		resp.Body.Close()
+
+		time.Sleep(3 * time.Second)
+
+		expResp := doRequest(
+			t, http.MethodGet,
+			apiURL+"/api/v1/users/anonymous/"+userID,
+			nil, regToken,
+		)
+		require.Equal(t,
+			http.StatusUnauthorized,
+			expResp.StatusCode,
+			"expired registered token must return 401",
+		)
+		expResp.Body.Close()
+
+		loginResp := doRequest(
+			t, http.MethodPost,
+			apiURL+"/api/v1/auth/login",
+			map[string]any{
+				"email":    email,
+				"password": testPassword,
+			},
+			"",
+		)
+		require.Equal(t,
+			http.StatusOK, loginResp.StatusCode,
+		)
+
+		loginBody := decodeJSON(t, loginResp)
+
+		freshToken, _ := loginBody["token"].(string)
+		require.NotEmpty(t, freshToken)
+
+		freshResp := doRequest(
+			t, http.MethodGet,
+			apiURL+"/api/v1/users/anonymous/"+userID,
+			nil, freshToken,
+		)
+		require.Equal(t,
+			http.StatusOK, freshResp.StatusCode,
+			"fresh login token must work",
+		)
+		freshResp.Body.Close()
+	})
+
+	t.Run("RefreshExtends", func(t *testing.T) {
+		_, token := createAnonymousUser(t)
+
+		time.Sleep(500 * time.Millisecond)
+
+		refreshResp := doRequest(
+			t, http.MethodPost,
+			apiURL+"/api/v1/auth/refresh",
+			map[string]any{},
+			token,
+		)
+		require.Equal(t,
+			http.StatusOK, refreshResp.StatusCode,
+			"refresh within TTL must succeed",
+		)
+
+		refreshBody := decodeJSON(t, refreshResp)
+
+		newToken, _ := refreshBody["token"].(string)
+		require.NotEmpty(t, newToken)
+
+		time.Sleep(1 * time.Second)
+
+		resp := doRequest(
+			t, http.MethodPost,
+			apiURL+"/api/v1/routes/prepare",
+			map[string]any{},
+			newToken,
+		)
+		require.Equal(t,
+			http.StatusOK, resp.StatusCode,
+			"refreshed token must still be valid",
+		)
+		resp.Body.Close()
+
+		time.Sleep(3 * time.Second)
+
+		expResp := doRequest(
+			t, http.MethodPost,
+			apiURL+"/api/v1/routes/prepare",
+			map[string]any{},
+			newToken,
+		)
+		require.Equal(t,
+			http.StatusUnauthorized,
+			expResp.StatusCode,
+			"refreshed token must eventually expire",
+		)
+		expResp.Body.Close()
+	})
 }
