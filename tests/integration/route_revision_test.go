@@ -226,7 +226,7 @@ func setupPublishedRoute(
 ) (routeID, authToken string, imageIDs []string) {
 	t.Helper()
 
-	_, authToken = createAnonymousUser(t)
+	_, authToken, _ = createAnonymousUser(t)
 	routeID = prepareRoute(t, authToken)
 	t.Cleanup(func() { deleteRoute(t, routeID, authToken) })
 
@@ -579,7 +579,7 @@ func TestRevision_OwnershipEnforcement_PrepareByOtherUser(t *testing.T) {
 	routeID, tokenA, _ := setupPublishedRoute(t)
 
 	// Create userB.
-	_, tokenB := createAnonymousUser(t)
+	_, tokenB, _ := createAnonymousUser(t)
 
 	// UserB attempts to prepare a revision on userA's route.
 	resp := doRequest(
@@ -644,7 +644,7 @@ func TestRevision_OwnershipEnforcement_CommitByOtherUser(t *testing.T) {
 	)
 
 	// Create userB and attempt to commit the revision.
-	_, tokenB := createAnonymousUser(t)
+	_, tokenB, _ := createAnonymousUser(t)
 
 	resp := doRequest(
 		t,
@@ -667,7 +667,7 @@ func TestRevision_OwnershipEnforcement_CommitByOtherUser(t *testing.T) {
 // TestRevision_RouteNotPublished verifies that prepare_revision is rejected
 // when the route is not in "published" status.
 func TestRevision_RouteNotPublished(t *testing.T) {
-	_, authToken := createAnonymousUser(t)
+	_, authToken, _ := createAnonymousUser(t)
 	routeID := prepareRoute(t, authToken)
 	t.Cleanup(func() { deleteRoute(t, routeID, authToken) })
 

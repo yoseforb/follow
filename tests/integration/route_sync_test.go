@@ -90,8 +90,8 @@ func TestSync_TwoRoutes_VersionProgression(t *testing.T) {
 	// Step 1: Create users
 	t.Log("Step 1: Create users")
 
-	_, userAToken := createAnonymousUser(t)
-	_, userBToken := createAnonymousUser(t)
+	_, userAToken, _ := createAnonymousUser(t)
+	_, userBToken, _ := createAnonymousUser(t)
 
 	// Step 2: UserA creates and publishes two routes with different images
 	t.Log("Step 2: UserA creates and publishes two routes")

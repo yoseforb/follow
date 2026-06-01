@@ -71,9 +71,9 @@ func TestAccountDeletionFullFlow(t *testing.T) {
 	// Step 1: Create anonymous user -> register -> confirm
 	t.Log("Step 1: Create and register user")
 
-	userID, token := createAnonymousUser(t)
+	userID, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	regToken := registerAndConfirm(t, token, email)
+	regToken, _ := registerAndConfirm(t, token, email)
 
 	// Step 2: Create a route under the registered user
 	t.Log("Step 2: Create route as registered user")
@@ -132,7 +132,7 @@ func TestAccountDeletionFullFlow(t *testing.T) {
 	// deleted user's invalidated JWT.
 	t.Log("Step 6: Verify user is gone (404)")
 
-	_, probeToken := createAnonymousUser(t)
+	_, probeToken, _ := createAnonymousUser(t)
 
 	getUserResp := doRequest(
 		t, http.MethodGet,
@@ -182,9 +182,9 @@ func TestCancelAccountDeletion(t *testing.T) {
 	// Setup: Register and confirm user
 	t.Log("Setup: Register and confirm user")
 
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	regToken := registerAndConfirm(t, token, email)
+	regToken, _ := registerAndConfirm(t, token, email)
 
 	// Step 1: Request account deletion
 	t.Log("Step 1: Request account deletion")
@@ -273,9 +273,9 @@ func TestDeletionCodeSecurity(t *testing.T) {
 	// Setup: Register, confirm, and request deletion
 	t.Log("Setup: Register, confirm, request deletion")
 
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	regToken := registerAndConfirm(t, token, email)
+	regToken, _ := registerAndConfirm(t, token, email)
 
 	clearMailbox(t)
 
@@ -381,7 +381,7 @@ func TestStateExpiry(t *testing.T) {
 	t.Run("PendingRegistrationExpiry", func(t *testing.T) {
 		clearMailbox(t)
 
-		userID, token := createAnonymousUser(t)
+		userID, token, _ := createAnonymousUser(t)
 
 		email := uniqueEmail()
 
@@ -461,9 +461,9 @@ func TestStateExpiry(t *testing.T) {
 	t.Run("PendingDeletionExpiry", func(t *testing.T) {
 		clearMailbox(t)
 
-		_, token := createAnonymousUser(t)
+		_, token, _ := createAnonymousUser(t)
 		email := uniqueEmail()
-		regToken := registerAndConfirm(t, token, email)
+		regToken, _ := registerAndConfirm(t, token, email)
 
 		clearMailbox(t)
 
@@ -497,7 +497,7 @@ func TestStateExpiry(t *testing.T) {
 
 		loginBody := decodeJSON(t, loginResp)
 
-		freshToken, _ := loginBody["token"].(string)
+		freshToken, _ := loginBody["access_token"].(string)
 		require.NotEmpty(t, freshToken)
 
 		// state_expires_at should be nil

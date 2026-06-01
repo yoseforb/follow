@@ -34,7 +34,7 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 	// ------------------------------------------------------------------ //
 	t.Log("Step 1: Create anonymous user")
 
-	userID, authToken := createAnonymousUser(t)
+	userID, authToken, anonRefreshToken := createAnonymousUser(t)
 
 	// Verify full schema fields beyond what the helper checks.
 	step1Resp := doRequest(
@@ -46,8 +46,8 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 	)
 	step1Body := decodeJSON(t, step1Resp)
 
-	assert.NotEmpty(t, step1Body["expires_at"],
-		"Step 1: expires_at must not be empty",
+	assert.NotEmpty(t, step1Body["access_token_expires_at"],
+		"Step 1: access_token_expires_at must not be empty",
 	)
 	assert.NotEmpty(t, step1Body["created_at"],
 		"Step 1: created_at must not be empty",
@@ -91,8 +91,8 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 		t,
 		http.MethodPost,
 		apiURL+"/api/v1/auth/refresh",
-		map[string]any{},
-		authToken,
+		map[string]any{"refresh_token": anonRefreshToken},
+		"",
 	)
 
 	require.Equal(t, http.StatusOK, step3Resp.StatusCode,
@@ -101,14 +101,14 @@ func TestFullAPIBehavioralFlow(t *testing.T) {
 
 	step3Body := decodeJSON(t, step3Resp)
 
-	refreshedToken, ok := step3Body["token"].(string)
-	require.True(t, ok, "Step 3: token must be a string")
+	refreshedToken, ok := step3Body["access_token"].(string)
+	require.True(t, ok, "Step 3: access_token must be a string")
 	require.NotEmpty(t, refreshedToken,
-		"Step 3: refreshed token must not be empty",
+		"Step 3: refreshed access_token must not be empty",
 	)
 
-	assert.NotEmpty(t, step3Body["expires_at"],
-		"Step 3: expires_at must not be empty",
+	assert.NotEmpty(t, step3Body["access_token_expires_at"],
+		"Step 3: access_token_expires_at must not be empty",
 	)
 
 	authToken = refreshedToken

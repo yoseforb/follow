@@ -20,7 +20,7 @@ import (
 func TestValkeyFailurePropagation_InvalidImageRejectedByGateway(
 	t *testing.T,
 ) {
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	routeID := prepareRoute(t, token)
 	route := createRouteWithWaypoints(t, token, routeID, defaultTestImages)
 	t.Cleanup(func() { deleteRoute(t, routeID, token) })
@@ -60,7 +60,7 @@ func TestValkeyFailurePropagation_InvalidImageRejectedByGateway(
 // is uploaded. Uses XRANGE to scan the stream idempotently so the message is
 // never missed regardless of delivery ordering.
 func TestValkeyFailurePropagation_FailureStreamMessage(t *testing.T) {
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	routeID := prepareRoute(t, token)
 	route := createRouteWithWaypoints(t, token, routeID, defaultTestImages)
 	t.Cleanup(func() { deleteRoute(t, routeID, token) })

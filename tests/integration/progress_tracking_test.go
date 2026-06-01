@@ -16,7 +16,7 @@ import (
 // writes {stage: "queued"} to image:status:{image_id} hash immediately when
 // creating a route (before any upload occurs).
 func TestValkeyProgressTracking_InitialStatusSetByAPI(t *testing.T) {
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	routeID := prepareRoute(t, token)
 	route := createRouteWithWaypoints(t, token, routeID, defaultTestImages)
 	t.Cleanup(func() { deleteRoute(t, routeID, token) })
@@ -44,7 +44,7 @@ func TestValkeyProgressTracking_InitialStatusSetByAPI(t *testing.T) {
 func TestValkeyProgressTracking_StageTransitionsOnUpload(
 	t *testing.T,
 ) {
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	routeID := prepareRoute(t, token)
 	route := createRouteWithWaypoints(t, token, routeID, defaultTestImages)
 	t.Cleanup(func() { deleteRoute(t, routeID, token) })
@@ -97,7 +97,7 @@ func TestValkeyProgressTracking_StageTransitionsOnUpload(
 // TestValkeyProgressTracking_TTLSet verifies that the image:status:{id} hash
 // key has a TTL (it must expire eventually — no orphan keys).
 func TestValkeyProgressTracking_TTLSet(t *testing.T) {
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	routeID := prepareRoute(t, token)
 	route := createRouteWithWaypoints(t, token, routeID, defaultTestImages)
 	t.Cleanup(func() { deleteRoute(t, routeID, token) })

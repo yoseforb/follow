@@ -766,7 +766,7 @@ func TestSeedSearchData(t *testing.T) {
 
 	users := make([]seedUser, numUsers)
 	for i := range users {
-		id, token := createAnonymousUser(t)
+		id, token, _ := createAnonymousUser(t)
 		users[i] = seedUser{id: id, token: token}
 		t.Logf("created user %d: %s", i+1, id)
 	}

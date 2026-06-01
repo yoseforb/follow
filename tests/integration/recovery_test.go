@@ -21,7 +21,7 @@ import (
 // remains in the PEL and can be re-claimed by a new consumer via
 // XAUTOCLAIM.
 func TestValkeyRecovery_PendingMessageRetained(t *testing.T) {
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	routeID := prepareRoute(t, token)
 	route := createRouteWithWaypoints(t, token, routeID, defaultTestImages)
 	t.Cleanup(func() { deleteRoute(t, routeID, token) })

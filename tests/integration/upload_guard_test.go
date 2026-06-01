@@ -16,7 +16,7 @@ import (
 // only processed once. A second upload with the same token must be rejected
 // with 409 Conflict.
 func TestValkeyUploadGuard_PreventsDuplicateUploads(t *testing.T) {
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	routeID := prepareRoute(t, token)
 	route := createRouteWithWaypoints(t, token, routeID, defaultTestImages)
 
@@ -78,7 +78,7 @@ func TestValkeyUploadGuard_PreventsDuplicateUploads(t *testing.T) {
 // IDs obtained from the same route are each accepted independently, so
 // uploading image A does not block image B.
 func TestValkeyUploadGuard_DifferentImagesAccepted(t *testing.T) {
-	_, token := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	routeID := prepareRoute(t, token)
 	route := createRouteWithWaypoints(t, token, routeID, defaultTestImages)
 

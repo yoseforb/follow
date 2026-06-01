@@ -153,8 +153,10 @@ func decodeJSON(
 }
 
 // createAnonymousUser calls POST /api/v1/users/anonymous.
-// Returns user_id and JWT token.
-func createAnonymousUser(t *testing.T) (userID, token string) {
+// Returns user_id, access token, and refresh token.
+func createAnonymousUser(
+	t *testing.T,
+) (userID, token, refreshToken string) {
 	t.Helper()
 
 	resp := doRequest(
@@ -166,7 +168,8 @@ func createAnonymousUser(t *testing.T) (userID, token string) {
 	)
 
 	require.Equalf(t, http.StatusOK, resp.StatusCode,
-		"createAnonymousUser: expected 200, got %d", resp.StatusCode,
+		"createAnonymousUser: expected 200, got %d",
+		resp.StatusCode,
 	)
 
 	result := decodeJSON(t, resp)
@@ -179,15 +182,17 @@ func createAnonymousUser(t *testing.T) (userID, token string) {
 		"createAnonymousUser: user_id is empty",
 	)
 
-	tokenVal, ok := result["token"].(string)
+	tokenVal, ok := result["access_token"].(string)
 	require.True(t, ok,
-		"createAnonymousUser: response missing string token",
+		"createAnonymousUser: response missing string access_token",
 	)
 	require.NotEmpty(t, tokenVal,
-		"createAnonymousUser: token is empty",
+		"createAnonymousUser: access_token is empty",
 	)
 
-	return userIDVal, tokenVal
+	rtVal, _ := result["refresh_token"].(string)
+
+	return userIDVal, tokenVal, rtVal
 }
 
 // prepareRoute calls POST /api/v1/routes/prepare.
