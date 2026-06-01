@@ -69,14 +69,14 @@ func waitForOwnerType(
 
 // registerAndConfirm is a convenience helper that performs
 // the full registration flow: register, extract verification
-// code from Mailpit, and confirm. Returns the access token
-// and refresh token. Caller must clearMailbox before calling
-// if needed.
+// code from Mailpit, and confirm. Returns the new user ID
+// (PK-swapped after promotion), access token, and refresh
+// token. Caller must clearMailbox before calling if needed.
 func registerAndConfirm(
 	t *testing.T,
 	anonToken string,
 	email string,
-) (accessToken, refreshToken string) {
+) (newUserID, accessToken, refreshToken string) {
 	t.Helper()
 
 	regResp := doRequest(
@@ -109,6 +109,11 @@ func registerAndConfirm(
 
 	confirmBody := decodeJSON(t, confirmResp)
 
+	uid, ok := confirmBody["user_id"].(string)
+	require.True(t, ok,
+		"registerAndConfirm: missing user_id",
+	)
+
 	at, ok := confirmBody["access_token"].(string)
 	require.True(t, ok,
 		"registerAndConfirm: missing access_token",
@@ -116,7 +121,7 @@ func registerAndConfirm(
 
 	rt, _ := confirmBody["refresh_token"].(string)
 
-	return at, rt
+	return uid, at, rt
 }
 
 // TestRegistrationFullFlow exercises the complete
@@ -251,7 +256,7 @@ func TestLoginFlow(t *testing.T) {
 	t.Cleanup(func() { deleteUser(t, userIDA, tokenA) })
 
 	emailA := uniqueEmail()
-	regTokenA, _ := registerAndConfirm(
+	_, regTokenA, _ := registerAndConfirm(
 		t, tokenA, emailA,
 	)
 	tokenA = regTokenA
@@ -350,7 +355,7 @@ func TestDuplicateEmailRejection(t *testing.T) {
 	t.Log("Setup: Register and confirm user A")
 
 	_, tokenA, _ := createAnonymousUser(t)
-	_, _ = registerAndConfirm(t, tokenA, email)
+	_, _, _ = registerAndConfirm(t, tokenA, email)
 
 	// Attempt to register user B with the same email
 	t.Log("Test: Register user B with same email")
@@ -404,7 +409,7 @@ func TestRoutesSurviveRegistration(t *testing.T) {
 	t.Log("Step 2: Register and confirm")
 
 	email := uniqueEmail()
-	regToken, _ := registerAndConfirm(
+	_, regToken, _ := registerAndConfirm(
 		t, token, email,
 	)
 	token = regToken
@@ -548,7 +553,7 @@ func TestPasswordResetFlow(t *testing.T) {
 
 	_, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	_, _ = registerAndConfirm(t, token, email)
+	_, _, _ = registerAndConfirm(t, token, email)
 
 	// Step 1: Request password reset
 	t.Log("Step 1: Forgot password")
@@ -641,7 +646,7 @@ func TestRegisterAlreadyRegistered(t *testing.T) {
 
 	_, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	regToken, _ := registerAndConfirm(t, token, email)
+	_, regToken, _ := registerAndConfirm(t, token, email)
 
 	resp := doRequest(
 		t, http.MethodPost,
@@ -874,7 +879,7 @@ func TestResetPasswordWrongCode(t *testing.T) {
 
 	_, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	_, _ = registerAndConfirm(t, token, email)
+	_, _, _ = registerAndConfirm(t, token, email)
 
 	clearMailbox(t)
 
@@ -938,16 +943,16 @@ func TestResetPasswordShortNewPassword(t *testing.T) {
 func TestRegisteredTokenWorksForAuthEndpoints(t *testing.T) {
 	clearMailbox(t)
 
-	userID, token, _ := createAnonymousUser(t)
+	_, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	regToken, regRefreshToken := registerAndConfirm(
+	newUserID, regToken, regRefreshToken := registerAndConfirm(
 		t, token, email,
 	)
 
-	// Use registered token to GET own user
+	// Use registered token to GET own user (new UUID after PK swap)
 	getResp := doRequest(
 		t, http.MethodGet,
-		apiURL+"/api/v1/users/anonymous/"+userID,
+		apiURL+"/api/v1/users/anonymous/"+newUserID,
 		nil,
 		regToken,
 	)
@@ -990,7 +995,7 @@ func TestRegisteredTokenWorksForAuthEndpoints(t *testing.T) {
 	// Login token can also access endpoints
 	getResp2 := doRequest(
 		t, http.MethodGet,
-		apiURL+"/api/v1/users/anonymous/"+userID,
+		apiURL+"/api/v1/users/anonymous/"+newUserID,
 		nil,
 		loginToken,
 	)
@@ -1292,7 +1297,7 @@ func TestResetPasswordIdempotency(t *testing.T) {
 
 	_, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	_, _ = registerAndConfirm(t, token, email)
+	_, _, _ = registerAndConfirm(t, token, email)
 
 	clearMailbox(t)
 
@@ -1500,15 +1505,15 @@ func TestTokenExpiry(t *testing.T) {
 	t.Run("RegisteredToken", func(t *testing.T) {
 		clearMailbox(t)
 
-		userID, anonToken, _ := createAnonymousUser(t)
+		_, anonToken, _ := createAnonymousUser(t)
 		email := uniqueEmail()
-		regToken, _ := registerAndConfirm(
+		newUserID, regToken, _ := registerAndConfirm(
 			t, anonToken, email,
 		)
 
 		resp := doRequest(
 			t, http.MethodGet,
-			apiURL+"/api/v1/users/anonymous/"+userID,
+			apiURL+"/api/v1/users/anonymous/"+newUserID,
 			nil, regToken,
 		)
 		require.Equal(t,
@@ -1521,7 +1526,7 @@ func TestTokenExpiry(t *testing.T) {
 
 		expResp := doRequest(
 			t, http.MethodGet,
-			apiURL+"/api/v1/users/anonymous/"+userID,
+			apiURL+"/api/v1/users/anonymous/"+newUserID,
 			nil, regToken,
 		)
 		require.Equal(t,
@@ -1551,7 +1556,7 @@ func TestTokenExpiry(t *testing.T) {
 
 		freshResp := doRequest(
 			t, http.MethodGet,
-			apiURL+"/api/v1/users/anonymous/"+userID,
+			apiURL+"/api/v1/users/anonymous/"+newUserID,
 			nil, freshToken,
 		)
 		require.Equal(t,

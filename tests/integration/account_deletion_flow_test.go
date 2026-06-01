@@ -73,7 +73,7 @@ func TestAccountDeletionFullFlow(t *testing.T) {
 
 	userID, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	regToken, _ := registerAndConfirm(t, token, email)
+	_, regToken, _ := registerAndConfirm(t, token, email)
 
 	// Step 2: Create a route under the registered user
 	t.Log("Step 2: Create route as registered user")
@@ -184,7 +184,7 @@ func TestCancelAccountDeletion(t *testing.T) {
 
 	_, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	regToken, _ := registerAndConfirm(t, token, email)
+	_, regToken, _ := registerAndConfirm(t, token, email)
 
 	// Step 1: Request account deletion
 	t.Log("Step 1: Request account deletion")
@@ -275,7 +275,7 @@ func TestDeletionCodeSecurity(t *testing.T) {
 
 	_, token, _ := createAnonymousUser(t)
 	email := uniqueEmail()
-	regToken, _ := registerAndConfirm(t, token, email)
+	_, regToken, _ := registerAndConfirm(t, token, email)
 
 	clearMailbox(t)
 
@@ -463,7 +463,7 @@ func TestStateExpiry(t *testing.T) {
 
 		_, token, _ := createAnonymousUser(t)
 		email := uniqueEmail()
-		regToken, _ := registerAndConfirm(t, token, email)
+		_, regToken, _ := registerAndConfirm(t, token, email)
 
 		clearMailbox(t)
 
