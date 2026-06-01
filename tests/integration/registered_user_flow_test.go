@@ -418,6 +418,10 @@ func TestRoutesSurviveRegistration(t *testing.T) {
 	t.Log("Step 3: Verify routes accessible with new JWT")
 
 	for _, rid := range routeIDs {
+		waitForOwnerType(
+			t, rid, regToken, "user", 10*time.Second,
+		)
+
 		resp := doRequest(
 			t, http.MethodGet,
 			apiURL+"/api/v1/routes/"+rid,
@@ -428,10 +432,6 @@ func TestRoutesSurviveRegistration(t *testing.T) {
 			"route %s must be accessible", rid,
 		)
 		resp.Body.Close()
-
-		waitForOwnerType(
-			t, rid, regToken, "user", 10*time.Second,
-		)
 	}
 }
 
