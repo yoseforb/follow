@@ -1619,3 +1619,440 @@ func TestTokenExpiry(t *testing.T) {
 		expResp.Body.Close()
 	})
 }
+
+// --- Session lifecycle tests below ---
+
+// TestLogoutSingleDevice logs in, calls POST /auth/logout
+// with the access token, and verifies the refresh token from
+// that session is dead (session deleted server-side).
+func TestLogoutSingleDevice(t *testing.T) {
+	clearMailbox(t)
+
+	// Setup: register a user
+	t.Log("Setup: Register and confirm user")
+
+	_, anonToken, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, regToken, _ := registerAndConfirm(
+		t, anonToken, email,
+	)
+
+	// Step 1: Login to get a session with refresh token
+	t.Log("Step 1: Login")
+
+	loginResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusOK, loginResp.StatusCode,
+	)
+
+	loginBody := decodeJSON(t, loginResp)
+
+	accessToken, _ := loginBody["access_token"].(string)
+	require.NotEmpty(t, accessToken)
+
+	refreshToken, _ := loginBody["refresh_token"].(string)
+	require.NotEmpty(t, refreshToken)
+
+	// Step 2: Logout with the access token
+	t.Log("Step 2: POST /auth/logout")
+
+	logoutResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/logout",
+		nil,
+		accessToken,
+	)
+	require.Equal(t,
+		http.StatusNoContent, logoutResp.StatusCode,
+		"logout must return 204",
+	)
+	logoutResp.Body.Close()
+
+	// Step 3: Refresh with the old refresh token → must fail
+	t.Log("Step 3: Refresh with old token fails")
+
+	refreshResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{
+			"refresh_token": refreshToken,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized,
+		refreshResp.StatusCode,
+		"refresh after logout must return 401",
+	)
+	refreshResp.Body.Close()
+
+	// Step 4: Login still works (account is not deleted)
+	t.Log("Step 4: Login still works")
+
+	reloginResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusOK, reloginResp.StatusCode,
+		"login after logout must succeed",
+	)
+	reloginResp.Body.Close()
+
+	_ = regToken
+}
+
+// TestLogoutAllDevices logs in from two "devices", calls
+// POST /auth/logout-all, and verifies both refresh tokens
+// are dead.
+func TestLogoutAllDevices(t *testing.T) {
+	clearMailbox(t)
+
+	// Setup: register a user
+	t.Log("Setup: Register and confirm user")
+
+	_, anonToken, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, _, _ = registerAndConfirm(t, anonToken, email)
+
+	// Step 1: Login from device A
+	t.Log("Step 1: Login device A")
+
+	loginA := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t, http.StatusOK, loginA.StatusCode)
+
+	bodyA := decodeJSON(t, loginA)
+
+	tokenA, _ := bodyA["access_token"].(string)
+	require.NotEmpty(t, tokenA)
+
+	refreshA, _ := bodyA["refresh_token"].(string)
+	require.NotEmpty(t, refreshA)
+
+	// Step 2: Login from device B
+	t.Log("Step 2: Login device B")
+
+	loginB := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t, http.StatusOK, loginB.StatusCode)
+
+	bodyB := decodeJSON(t, loginB)
+
+	tokenB, _ := bodyB["access_token"].(string)
+	require.NotEmpty(t, tokenB)
+
+	refreshB, _ := bodyB["refresh_token"].(string)
+	require.NotEmpty(t, refreshB)
+
+	// Step 3: Logout all using device A's token
+	t.Log("Step 3: POST /auth/logout-all")
+
+	logoutResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/logout-all",
+		nil,
+		tokenA,
+	)
+	require.Equal(t,
+		http.StatusNoContent, logoutResp.StatusCode,
+		"logout-all must return 204",
+	)
+	logoutResp.Body.Close()
+
+	// Step 4: Both refresh tokens are dead
+	t.Log("Step 4: Both refresh tokens fail")
+
+	refreshRespA := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{
+			"refresh_token": refreshA,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized,
+		refreshRespA.StatusCode,
+		"device A refresh after logout-all must return 401",
+	)
+	refreshRespA.Body.Close()
+
+	refreshRespB := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{
+			"refresh_token": refreshB,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized,
+		refreshRespB.StatusCode,
+		"device B refresh after logout-all must return 401",
+	)
+	refreshRespB.Body.Close()
+
+	// Step 5: Fresh login still works
+	t.Log("Step 5: Fresh login works")
+
+	freshLogin := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusOK, freshLogin.StatusCode,
+		"login after logout-all must succeed",
+	)
+	freshLogin.Body.Close()
+}
+
+// TestPasswordResetInvalidatesSessions verifies that
+// resetting a password kills all existing sessions: login,
+// reset password via forgot-password flow, verify old
+// refresh token fails, verify new login works.
+func TestPasswordResetInvalidatesSessions(t *testing.T) {
+	clearMailbox(t)
+
+	// Setup: register and login
+	t.Log("Setup: Register, confirm, and login")
+
+	_, anonToken, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, _, _ = registerAndConfirm(t, anonToken, email)
+
+	loginResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t, http.StatusOK, loginResp.StatusCode)
+
+	loginBody := decodeJSON(t, loginResp)
+
+	oldRefresh, _ := loginBody["refresh_token"].(string)
+	require.NotEmpty(t, oldRefresh)
+
+	// Step 1: Forgot password
+	t.Log("Step 1: Forgot password")
+
+	clearMailbox(t)
+
+	forgotResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{"email": email},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, forgotResp.StatusCode,
+	)
+	forgotResp.Body.Close()
+
+	// Step 2: Extract reset code and reset password
+	t.Log("Step 2: Reset password")
+
+	msgID := waitForEmail(t, email)
+	resetCode := extractVerificationCode(t, msgID)
+
+	const newPassword = "resetpass789"
+
+	resetResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/reset-password",
+		map[string]any{
+			"email":        email,
+			"code":         resetCode,
+			"new_password": newPassword,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, resetResp.StatusCode,
+	)
+	resetResp.Body.Close()
+
+	// Step 3: Old refresh token is dead
+	t.Log("Step 3: Old refresh token fails")
+
+	refreshResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{
+			"refresh_token": oldRefresh,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized,
+		refreshResp.StatusCode,
+		"refresh after password reset must return 401",
+	)
+	refreshResp.Body.Close()
+
+	// Step 4: Login with new password works
+	t.Log("Step 4: Login with new password works")
+
+	newLoginResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": newPassword,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusOK, newLoginResp.StatusCode,
+		"login with new password must succeed",
+	)
+	newLoginResp.Body.Close()
+
+	// Step 5: Login with old password fails
+	t.Log("Step 5: Login with old password fails")
+
+	oldLoginResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized,
+		oldLoginResp.StatusCode,
+		"login with old password must return 401",
+	)
+	oldLoginResp.Body.Close()
+}
+
+// TestStaleAnonymousTokenAfterPromotion creates an anonymous
+// user, saves the anonymous refresh token, registers+confirms
+// (PK changes), then refreshes with the old anonymous refresh
+// token. The anonymous refresh path is stateless (HMAC), so
+// the refresh itself succeeds — but the resulting access token
+// references the OLD UUID which no longer exists, so any API
+// call with that access token returns 401 or 404.
+func TestStaleAnonymousTokenAfterPromotion(t *testing.T) {
+	clearMailbox(t)
+
+	// Step 1: Create anonymous user and save refresh token
+	t.Log("Step 1: Create anonymous user")
+
+	anonUserID, anonToken, anonRefresh := createAnonymousUser(t)
+	require.NotEmpty(t, anonRefresh,
+		"anonymous user must have a refresh token",
+	)
+
+	// Step 2: Register and confirm (PK changes)
+	t.Log("Step 2: Register and confirm")
+
+	email := uniqueEmail()
+	newUserID, regToken, _ := registerAndConfirm(
+		t, anonToken, email,
+	)
+	require.NotEqual(t, anonUserID, newUserID,
+		"user ID must change after PK swap",
+	)
+
+	_ = regToken
+
+	// Step 3: Refresh with old anonymous refresh token
+	t.Log("Step 3: Refresh with stale anonymous token")
+
+	refreshResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{
+			"refresh_token": anonRefresh,
+		},
+		"",
+	)
+
+	// The anonymous refresh path is stateless HMAC — the
+	// server may either:
+	// (a) succeed (200) and return an access token that
+	//     references the old UUID, or
+	// (b) reject (401) if the server detects the user was
+	//     promoted and the anonymous refresh is invalidated.
+	//
+	// Both behaviors are acceptable. If (a), the access
+	// token is useless because the old UUID no longer exists.
+	if refreshResp.StatusCode == http.StatusOK {
+		refreshBody := decodeJSON(t, refreshResp)
+
+		staleToken, _ := refreshBody["access_token"].(string)
+		require.NotEmpty(t, staleToken)
+
+		// Step 4: Use stale access token → must fail
+		t.Log("Step 4: API call with stale token fails")
+
+		getResp := doRequest(
+			t, http.MethodGet,
+			apiURL+"/api/v1/users/anonymous/"+anonUserID,
+			nil,
+			staleToken,
+		)
+
+		// The old UUID no longer exists; expect 401
+		// (token references deleted user) or 404
+		// (user not found).
+		status := getResp.StatusCode
+		getResp.Body.Close()
+
+		require.True(t,
+			status == http.StatusUnauthorized ||
+				status == http.StatusNotFound,
+			"API call with stale token must return "+
+				"401 or 404 (got %d)", status,
+		)
+	} else {
+		// Server rejected the refresh outright — also valid
+		refreshResp.Body.Close()
+
+		require.Equal(t,
+			http.StatusUnauthorized,
+			refreshResp.StatusCode,
+			"rejected anonymous refresh must return 401",
+		)
+		t.Log("Server rejected stale anonymous refresh (401)")
+	}
+}
