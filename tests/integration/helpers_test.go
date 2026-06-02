@@ -424,6 +424,48 @@ func uploadToGateway(
 	return resp
 }
 
+// uploadToGatewayWithExpectContinue sends a PUT request to uploadURL using the
+// HTTP "Expect: 100-continue" handshake. The client holds the body until the
+// server either sends "100 Continue" or rejects the request. This prevents a
+// TCP RST when the server detects a duplicate upload and returns 409 before
+// reading the body, which would otherwise cause "connection reset by peer".
+//
+// Returns the HTTP response and any transport-level error. The caller is
+// responsible for closing resp.Body when resp is non-nil.
+func uploadToGatewayWithExpectContinue(
+	uploadURL string,
+	uploadToken string,
+	imageBytes []byte,
+) (*http.Response, error) {
+	req, err := http.NewRequest(
+		http.MethodPut, uploadURL, bytes.NewReader(imageBytes),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+uploadToken)
+
+	// Setting this header instructs Go's HTTP/1.1 transport to hold the
+	// body until it receives "100 Continue" from the server. If the server
+	// sends any other response (e.g. 409) the transport delivers that
+	// response without sending the body, avoiding the RST race.
+	req.Header.Set("Expect", "100-continue")
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+			// How long to wait for the 100 Continue before sending the body
+			// anyway. A 5-second window is generous enough for CI and tight
+			// enough to not stall the test suite.
+			ExpectContinueTimeout: 5 * time.Second,
+		},
+	}
+
+	return client.Do(req)
+}
+
 // markerCoords holds a pair of normalised (x, y) marker coordinates.
 type markerCoords struct {
 	X float64

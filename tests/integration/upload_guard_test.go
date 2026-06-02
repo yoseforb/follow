@@ -52,11 +52,22 @@ func TestValkeyUploadGuard_PreventsDuplicateUploads(t *testing.T) {
 	)
 
 	// Second upload with the same token must be rejected with 409 Conflict.
-	resp2 := uploadToGateway(
-		t,
+	// uploadToGatewayWithExpectContinue is used here instead of
+	// uploadToGateway to avoid a TCP RST race: the gateway checks the upload
+	// guard before reading the request body, so it sends 409 and closes the
+	// connection while the client may still be streaming the ~905 KB image.
+	// With "Expect: 100-continue" the client holds the body until it gets a
+	// 100 response; detecting 409 first means the body is never sent and the
+	// connection closes cleanly.
+	resp2, err := uploadToGatewayWithExpectContinue(
 		uploadEntry.UploadURL,
 		uploadEntry.UploadToken,
 		loadTestImage(t, "pexels-punttim-240223.jpg"),
+	)
+	require.NoError(
+		t,
+		err,
+		"duplicate upload should not produce a transport error",
 	)
 	require.Equal(
 		t,
