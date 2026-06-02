@@ -724,6 +724,87 @@ func TestConfirmRegistrationSessionRotation(t *testing.T) {
 	newResp.Body.Close()
 }
 
+// TestOAuthGoogleInvalidToken verifies that POST
+// /auth/oauth/google with a garbage ID token returns 401.
+func TestOAuthGoogleInvalidToken(t *testing.T) {
+	_, token, _ := createAnonymousUser(t)
+
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/oauth/google",
+		map[string]any{
+			"id_token": "not-a-real-google-token",
+		},
+		token,
+	)
+	require.Equal(t,
+		http.StatusUnauthorized, resp.StatusCode,
+		"invalid Google ID token must return 401",
+	)
+	resp.Body.Close()
+}
+
+// TestOAuthAppleInvalidToken verifies that POST
+// /auth/oauth/apple with a garbage ID token returns 401.
+func TestOAuthAppleInvalidToken(t *testing.T) {
+	_, token, _ := createAnonymousUser(t)
+
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/oauth/apple",
+		map[string]any{
+			"id_token": "not-a-real-apple-token",
+		},
+		token,
+	)
+	require.Equal(t,
+		http.StatusUnauthorized, resp.StatusCode,
+		"invalid Apple ID token must return 401",
+	)
+	resp.Body.Close()
+}
+
+// TestLoginReturnsCorrectUserIDAfterRegistration verifies
+// that after registration (PK swap), login returns the NEW
+// user_id, not the old anonymous UUID.
+func TestLoginReturnsCorrectUserIDAfterRegistration(
+	t *testing.T,
+) {
+	clearMailbox(t)
+
+	anonUserID, anonToken, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	newUserID, _, _ := registerAndConfirm(
+		t, anonToken, email,
+	)
+
+	require.NotEqual(t, anonUserID, newUserID,
+		"PK swap must produce a different user_id",
+	)
+
+	// Login and verify user_id matches the post-PK UUID
+	loginResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/login",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		"",
+	)
+	require.Equal(t, http.StatusOK, loginResp.StatusCode)
+
+	loginBody := decodeJSON(t, loginResp)
+
+	loginUserID, _ := loginBody["user_id"].(string)
+	require.Equal(t, newUserID, loginUserID,
+		"login must return the post-PK-swap user_id",
+	)
+	require.NotEqual(t, anonUserID, loginUserID,
+		"login must NOT return the old anonymous user_id",
+	)
+}
+
 // TestTamperedJWT verifies that modifying a JWT payload
 // without re-signing causes 401. Takes a valid token,
 // base64-decodes the payload, changes user_id, re-encodes,
