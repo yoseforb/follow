@@ -152,23 +152,24 @@ func TestAccountDeletionFullFlow(t *testing.T) {
 	)
 
 	// Step 7: Verify route is gone (cascade)
+	// Route deletion is event-driven (async). Poll until the
+	// cascade completes rather than assuming it already happened.
 	t.Log("Step 7: Verify route is gone (404)")
 
-	getRouteResp2 := doRequest(
-		t, http.MethodGet,
-		apiURL+"/api/v1/routes/"+routeID,
-		nil, probeToken,
-	)
-	// Route should be 404 (cascade deleted) or 403
-	// (ownership check fails for the probe user).
-	routeStatus := getRouteResp2.StatusCode
-	getRouteResp2.Body.Close()
-
-	assert.True(t,
-		routeStatus == http.StatusNotFound ||
-			routeStatus == http.StatusForbidden,
-		"route of deleted user must return 404 or 403 (got %d)",
-		routeStatus,
+	var routeStatus int
+	require.Eventually(t, func() bool {
+		resp := doRequest(
+			t, http.MethodGet,
+			apiURL+"/api/v1/routes/"+routeID,
+			nil, probeToken,
+		)
+		routeStatus = resp.StatusCode
+		resp.Body.Close()
+		return routeStatus == http.StatusNotFound ||
+			routeStatus == http.StatusForbidden
+	}, 5*time.Second, 200*time.Millisecond,
+		"route of deleted user must return 404 or 403 "+
+			"(last status %d)", routeStatus,
 	)
 }
 
