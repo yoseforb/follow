@@ -2133,8 +2133,9 @@ func TestRefreshTokenRotationReuseDetection(t *testing.T) {
 	)
 	replayResp.Body.Close()
 
-	// Step 3: New refresh token still works
-	t.Log("Step 3: New refresh token works")
+	// Step 3: New token also dead — reuse detection revokes
+	// the entire session family (OAuth 2.0 Security BCP).
+	t.Log("Step 3: New token also dead (family revoked)")
 
 	newRefreshResp := doRequest(
 		t, http.MethodPost,
@@ -2144,28 +2145,13 @@ func TestRefreshTokenRotationReuseDetection(t *testing.T) {
 		},
 		"",
 	)
-
-	// The new token may work (200) or may have been
-	// killed by reuse detection in step 2 (401). Both
-	// are valid security postures. Log which one we got.
-	status := newRefreshResp.StatusCode
-	newRefreshResp.Body.Close()
-
-	if status == http.StatusOK {
-		t.Log("New refresh token still valid (rotation only)")
-	} else {
-		t.Log(
-			"New refresh token killed by reuse detection " +
-				"(entire session family revoked)",
-		)
-	}
-
-	require.True(t,
-		status == http.StatusOK ||
-			status == http.StatusUnauthorized,
-		"new refresh must return 200 or 401 (got %d)",
-		status,
+	require.Equal(t,
+		http.StatusUnauthorized,
+		newRefreshResp.StatusCode,
+		"rotated token must also return 401 "+
+			"(session family revoked)",
 	)
+	newRefreshResp.Body.Close()
 }
 
 // TestLogoutWithAnonymousToken verifies that calling

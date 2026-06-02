@@ -535,3 +535,100 @@ func TestStateExpiry(t *testing.T) {
 		reqResp2.Body.Close()
 	})
 }
+
+// --- Deletion state guard tests ---
+
+// TestRequestDeletionAsAnonymous verifies that an anonymous
+// user (not registered) cannot request account deletion.
+func TestRequestDeletionAsAnonymous(t *testing.T) {
+	_, anonToken, _ := createAnonymousUser(t)
+
+	resp := requestAccountDeletion(t, anonToken)
+
+	status := resp.StatusCode
+	resp.Body.Close()
+
+	require.True(t,
+		status == http.StatusBadRequest ||
+			status == http.StatusConflict,
+		"anonymous user deletion request must return "+
+			"400 or 409 (got %d)", status,
+	)
+}
+
+// TestRequestDeletionAlreadyPending verifies that requesting
+// deletion a second time while already in pending_deletion
+// state returns 409.
+func TestRequestDeletionAlreadyPending(t *testing.T) {
+	clearMailbox(t)
+
+	_, anonToken, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, regToken, _ := registerAndConfirm(t, anonToken, email)
+
+	// First request
+	clearMailbox(t)
+
+	resp1 := requestAccountDeletion(t, regToken)
+	require.Equal(t,
+		http.StatusNoContent, resp1.StatusCode,
+		"first request must return 204",
+	)
+	resp1.Body.Close()
+
+	// Second request while still pending
+	resp2 := requestAccountDeletion(t, regToken)
+	require.Equal(t,
+		http.StatusConflict, resp2.StatusCode,
+		"duplicate deletion request must return 409",
+	)
+	resp2.Body.Close()
+}
+
+// TestCancelDeletionWhenNotPending verifies that cancelling
+// account deletion when not in pending_deletion state returns
+// an error.
+func TestCancelDeletionWhenNotPending(t *testing.T) {
+	clearMailbox(t)
+
+	_, anonToken, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, regToken, _ := registerAndConfirm(t, anonToken, email)
+
+	// Cancel without requesting deletion first
+	resp := cancelAccountDeletion(t, regToken)
+
+	status := resp.StatusCode
+	resp.Body.Close()
+
+	require.True(t,
+		status == http.StatusConflict ||
+			status == http.StatusBadRequest,
+		"cancel without pending deletion must return "+
+			"409 or 400 (got %d)", status,
+	)
+}
+
+// TestConfirmDeletionWhenNotPending verifies that confirming
+// account deletion when not in pending_deletion state returns
+// an error.
+func TestConfirmDeletionWhenNotPending(t *testing.T) {
+	clearMailbox(t)
+
+	_, anonToken, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, regToken, _ := registerAndConfirm(t, anonToken, email)
+
+	// Confirm without requesting deletion first
+	resp := confirmAccountDeletion(t, regToken, "123456")
+
+	status := resp.StatusCode
+	resp.Body.Close()
+
+	require.True(t,
+		status == http.StatusConflict ||
+			status == http.StatusBadRequest,
+		"confirm without pending deletion must return "+
+			"409 or 400 (got %d)", status,
+	)
+}

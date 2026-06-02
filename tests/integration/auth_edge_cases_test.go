@@ -4,8 +4,10 @@ package integration_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -531,4 +533,246 @@ func TestForgotPasswordPendingUser(t *testing.T) {
 		"forgot-password for pending user must return 204",
 	)
 	forgotResp.Body.Close()
+}
+
+// TestRefreshWithEmptyString verifies that POST /auth/refresh
+// with an empty refresh_token returns 400 or 401, not 500.
+func TestRefreshWithEmptyString(t *testing.T) {
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{
+			"refresh_token": "",
+		},
+		"",
+	)
+
+	status := resp.StatusCode
+	resp.Body.Close()
+
+	require.True(t,
+		status == http.StatusBadRequest ||
+			status == http.StatusUnauthorized,
+		"empty refresh token must return 400 or 401 "+
+			"(got %d)", status,
+	)
+}
+
+// TestResendVerificationInvalidatesOldCode verifies that
+// resending a verification code invalidates the previous
+// code. Code A (before resend) must fail; code B (after
+// resend) must succeed.
+func TestResendVerificationInvalidatesOldCode(t *testing.T) {
+	clearMailbox(t)
+
+	_, token, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+
+	// Register
+	regResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/register",
+		map[string]any{
+			"email":    email,
+			"password": testPassword,
+		},
+		token,
+	)
+	require.Equal(t, http.StatusOK, regResp.StatusCode)
+	regResp.Body.Close()
+
+	// Get code A
+	msgIDA := waitForEmail(t, email)
+	codeA := extractVerificationCode(t, msgIDA)
+
+	// Wait for resend cooldown (1s in test env + margin)
+	time.Sleep(2 * time.Second)
+
+	// Resend
+	clearMailbox(t)
+
+	resendResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/resend-verification",
+		map[string]any{},
+		token,
+	)
+	require.Equal(t,
+		http.StatusNoContent, resendResp.StatusCode,
+		"resend must return 204",
+	)
+	resendResp.Body.Close()
+
+	// Get code B
+	msgIDB := waitForEmail(t, email)
+	codeB := extractVerificationCode(t, msgIDB)
+
+	// Code A must fail
+	t.Log("Step 1: Old code A must fail")
+
+	confirmA := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/confirm-registration",
+		map[string]any{"code": codeA},
+		token,
+	)
+
+	statusA := confirmA.StatusCode
+	confirmA.Body.Close()
+
+	require.True(t,
+		statusA == http.StatusBadRequest ||
+			statusA == http.StatusUnauthorized,
+		"old code A must be rejected (got %d)", statusA,
+	)
+
+	// Code B must succeed
+	t.Log("Step 2: New code B must succeed")
+
+	confirmB := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/confirm-registration",
+		map[string]any{"code": codeB},
+		token,
+	)
+	require.Equal(t,
+		http.StatusOK, confirmB.StatusCode,
+		"new code B must succeed",
+	)
+	confirmB.Body.Close()
+}
+
+// TestConfirmRegistrationSessionRotation verifies that the
+// refresh token from confirm-registration supports rotation
+// and that reuse detection revokes the entire session family
+// (OAuth 2.0 Security BCP).
+func TestConfirmRegistrationSessionRotation(t *testing.T) {
+	clearMailbox(t)
+
+	_, anonToken, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, _, confirmRefresh := registerAndConfirm(
+		t, anonToken, email,
+	)
+	require.NotEmpty(t, confirmRefresh,
+		"confirm-registration must return refresh_token",
+	)
+
+	// Refresh with the confirm-registration token
+	t.Log("Step 1: Refresh with confirm token")
+
+	refreshResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{
+			"refresh_token": confirmRefresh,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusOK, refreshResp.StatusCode,
+		"refresh with confirm token must succeed",
+	)
+
+	refreshBody := decodeJSON(t, refreshResp)
+
+	newRefresh, _ := refreshBody["refresh_token"].(string)
+	require.NotEmpty(t, newRefresh)
+	require.NotEqual(t, confirmRefresh, newRefresh,
+		"refresh must return a rotated token",
+	)
+
+	// Wait for rotation grace window
+	time.Sleep(2 * time.Second)
+
+	// Old confirm token must be dead — reuse detected,
+	// entire session family revoked (OAuth 2.0 Security BCP).
+	t.Log("Step 2: Replay old token → reuse detection")
+
+	replayResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{
+			"refresh_token": confirmRefresh,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized,
+		replayResp.StatusCode,
+		"replayed confirm token must return 401",
+	)
+	replayResp.Body.Close()
+
+	// New token also dead — session family revoked
+	t.Log("Step 3: New token also dead (family revoked)")
+
+	newResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/refresh",
+		map[string]any{
+			"refresh_token": newRefresh,
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusUnauthorized,
+		newResp.StatusCode,
+		"rotated token must also return 401 "+
+			"(session family revoked)",
+	)
+	newResp.Body.Close()
+}
+
+// TestTamperedJWT verifies that modifying a JWT payload
+// without re-signing causes 401. Takes a valid token,
+// base64-decodes the payload, changes user_id, re-encodes,
+// and sends it. The signature check must reject it.
+func TestTamperedJWT(t *testing.T) {
+	_, token, _ := createAnonymousUser(t)
+
+	// JWT format: header.payload.signature
+	parts := strings.Split(token, ".")
+	require.Len(t, parts, 3,
+		"JWT must have 3 parts",
+	)
+
+	// Decode payload
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(
+		parts[1],
+	)
+	require.NoError(t, err, "failed to decode JWT payload")
+
+	var payload map[string]any
+
+	err = json.Unmarshal(payloadBytes, &payload)
+	require.NoError(t, err, "failed to parse JWT payload")
+
+	// Tamper: change the subject (user ID)
+	payload["sub"] = "00000000-0000-0000-0000-000000000000"
+
+	tamperedPayload, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	parts[1] = base64.RawURLEncoding.EncodeToString(
+		tamperedPayload,
+	)
+
+	tamperedToken := strings.Join(parts, ".")
+
+	// Use tampered token
+	resp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/routes/prepare",
+		map[string]any{},
+		tamperedToken,
+	)
+
+	status := resp.StatusCode
+	resp.Body.Close()
+
+	require.Equal(t,
+		http.StatusUnauthorized, status,
+		"tampered JWT must return 401",
+	)
 }
