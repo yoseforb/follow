@@ -8,41 +8,43 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	valkeygo "github.com/valkey-io/valkey-go"
 )
 
 // TestInfrastructure_PostgreSQLReachable verifies PostgreSQL connectivity via API health
-// endpoint.
+// endpoint. Requires admin JWT (admin:access scope).
 func TestInfrastructure_PostgreSQLReachable(t *testing.T) {
 	t.Parallel()
 
-	resp, err := http.Get(apiURL + "/health/db")
-	if err != nil {
-		t.Fatalf("failed to reach database health endpoint: %v", err)
-	}
+	token := adminToken(t)
+
+	resp := doRequest(
+		t,
+		http.MethodGet,
+		apiURL+"/health/db",
+		nil,
+		token,
+	)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf(
-			"expected database health status 200, got %d",
-			resp.StatusCode,
-		)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode,
+		"expected database health status 200",
+	)
 
 	var result map[string]any
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
-		t.Fatalf("failed to decode database health response: %v", err)
-	}
+	err := json.NewDecoder(resp.Body).Decode(&result)
+	require.NoError(t, err,
+		"failed to decode database health response",
+	)
 
 	status, ok := result["status"].(string)
-	if !ok {
-		t.Fatal("database health response missing status field")
-	}
-
-	if status != "ok" {
-		t.Fatalf("expected database status 'ok', got '%s'", status)
-	}
+	require.True(t, ok,
+		"database health response missing status field",
+	)
+	require.Equal(t, "ok", status,
+		"expected database status 'ok'",
+	)
 }
 
 // TestInfrastructure_ValkeyReachable verifies Valkey connectivity with a direct PING.
@@ -69,38 +71,74 @@ func TestInfrastructure_ValkeyReachable(t *testing.T) {
 	}
 }
 
+// TestInfrastructure_ValkeyHealthReachable verifies Valkey connectivity via the
+// API /health/valkey endpoint. Requires admin JWT (admin:access scope).
+func TestInfrastructure_ValkeyHealthReachable(t *testing.T) {
+	t.Parallel()
+
+	token := adminToken(t)
+
+	resp := doRequest(
+		t,
+		http.MethodGet,
+		apiURL+"/health/valkey",
+		nil,
+		token,
+	)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode,
+		"expected valkey health status 200",
+	)
+
+	var result map[string]any
+	err := json.NewDecoder(resp.Body).Decode(&result)
+	require.NoError(t, err,
+		"failed to decode valkey health response",
+	)
+
+	status, ok := result["status"].(string)
+	require.True(t, ok,
+		"valkey health response missing status field",
+	)
+	require.Equal(t, "ok", status,
+		"expected valkey status 'ok'",
+	)
+}
+
 // TestInfrastructure_MinIOReachable verifies MinIO connectivity via API storage health
-// endpoint.
+// endpoint. Requires admin JWT (admin:access scope).
 func TestInfrastructure_MinIOReachable(t *testing.T) {
 	t.Parallel()
 
-	resp, err := http.Get(apiURL + "/health/storage")
-	if err != nil {
-		t.Fatalf("failed to reach storage health endpoint: %v", err)
-	}
+	token := adminToken(t)
+
+	resp := doRequest(
+		t,
+		http.MethodGet,
+		apiURL+"/health/storage",
+		nil,
+		token,
+	)
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf(
-			"expected storage health status 200, got %d",
-			resp.StatusCode,
-		)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode,
+		"expected storage health status 200",
+	)
 
 	var result map[string]any
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
-		t.Fatalf("failed to decode storage health response: %v", err)
-	}
+	err := json.NewDecoder(resp.Body).Decode(&result)
+	require.NoError(t, err,
+		"failed to decode storage health response",
+	)
 
 	status, ok := result["status"].(string)
-	if !ok {
-		t.Fatal("storage health response missing status field")
-	}
-
-	if status != "ok" {
-		t.Fatalf("expected storage status 'ok', got '%s'", status)
-	}
+	require.True(t, ok,
+		"storage health response missing status field",
+	)
+	require.Equal(t, "ok", status,
+		"expected storage status 'ok'",
+	)
 }
 
 // TestInfrastructure_FollowAPIHealthy verifies follow-api general health endpoint.

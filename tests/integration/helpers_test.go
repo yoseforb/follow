@@ -18,10 +18,77 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/require"
 	valkeygo "github.com/valkey-io/valkey-go"
 	"github.com/yoseforb/follow-pkg/valkey"
 )
+
+// adminToken generates an admin JWT matching the follow-api instance's
+// JWT_SECRET. The token carries the admin:access scope required by the
+// detail health endpoints (/health/db, /health/storage, /health/valkey).
+func adminToken(t *testing.T) string {
+	t.Helper()
+
+	secret := resolveJWTSecret(t)
+	require.NotEmpty(t, secret,
+		"adminToken: JWT_SECRET not found in env or /etc/follow-api",
+	)
+
+	now := time.Now()
+	userID := uuid.New().String()
+
+	claims := jwt.MapClaims{
+		"iss":       "follow-api",
+		"sub":       userID,
+		"user_id":   userID,
+		"user_type": "admin",
+		"scopes": []string{
+			"api:read",
+			"api:write",
+			"admin:access",
+		},
+		"sid": uuid.New().String(),
+		"iat": jwt.NewNumericDate(now),
+		"nbf": jwt.NewNumericDate(now),
+		"exp": jwt.NewNumericDate(now.Add(5 * time.Minute)),
+	}
+
+	token := jwt.NewWithClaims(
+		jwt.SigningMethodHS256,
+		claims,
+	)
+
+	signed, err := token.SignedString([]byte(secret))
+	require.NoError(t, err, "adminToken: failed to sign JWT")
+
+	return signed
+}
+
+// resolveJWTSecret returns the JWT secret used by the follow-api
+// instance. Checks JWT_SECRET env var first; falls back to reading
+// /etc/follow-api (the same env-file the API loads via Viper).
+func resolveJWTSecret(t *testing.T) string {
+	t.Helper()
+
+	if v := os.Getenv("JWT_SECRET"); v != "" {
+		return v
+	}
+
+	_, statErr := os.Stat("/etc/follow-api")
+	if statErr != nil {
+		return ""
+	}
+
+	envMap, err := godotenv.Read("/etc/follow-api")
+	if err != nil {
+		return ""
+	}
+
+	return envMap["JWT_SECRET"]
+}
 
 // PresignedURLEntry is a single presigned upload URL entry returned by
 // the create-waypoints endpoint.
