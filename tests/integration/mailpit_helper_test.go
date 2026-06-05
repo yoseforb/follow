@@ -156,3 +156,40 @@ func extractVerificationCode(
 
 	return code
 }
+
+// noEmailWithin asserts that no email addressed to toAddr
+// arrives within the given duration.
+func noEmailWithin(
+	t *testing.T,
+	toAddr string,
+	wait time.Duration,
+) {
+	t.Helper()
+
+	searchURL := mailpitURL + "/api/v1/search?query=" +
+		url.QueryEscape("to:"+toAddr)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	deadline := time.Now().Add(wait)
+
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(searchURL)
+		if err != nil {
+			time.Sleep(250 * time.Millisecond)
+			continue
+		}
+
+		var result mailpitSearchResponse
+
+		err = json.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+
+		require.NoError(t, err)
+		require.Empty(t, result.Messages,
+			"expected no email to %s but found %d",
+			toAddr, len(result.Messages),
+		)
+
+		time.Sleep(250 * time.Millisecond)
+	}
+}

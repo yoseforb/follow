@@ -556,10 +556,11 @@ func TestRequestDeletionAsAnonymous(t *testing.T) {
 	)
 }
 
-// TestRequestDeletionAlreadyPending verifies that requesting
+// TestRequestDeletionResendCooldown verifies that requesting
 // deletion a second time while already in pending_deletion
-// state returns 409.
-func TestRequestDeletionAlreadyPending(t *testing.T) {
+// state returns 429 (resend_too_soon) when the cooldown
+// window has not elapsed.
+func TestRequestDeletionResendCooldown(t *testing.T) {
 	clearMailbox(t)
 
 	_, anonToken, _ := createAnonymousUser(t)
@@ -576,13 +577,95 @@ func TestRequestDeletionAlreadyPending(t *testing.T) {
 	)
 	resp1.Body.Close()
 
-	// Second request while still pending
+	// Immediate second request hits resend cooldown
 	resp2 := requestAccountDeletion(t, regToken)
 	require.Equal(t,
-		http.StatusConflict, resp2.StatusCode,
-		"duplicate deletion request must return 409",
+		http.StatusTooManyRequests, resp2.StatusCode,
+		"immediate resend must return 429 (resend_too_soon)",
 	)
 	resp2.Body.Close()
+}
+
+// TestDeletionResendAfterCooldown verifies that after the
+// resend cooldown elapses, requesting deletion again sends a
+// fresh code that can be used to confirm deletion.
+// Local mode only — requires API restart with short cooldown.
+func TestDeletionResendAfterCooldown(t *testing.T) {
+	if envOrDefault(
+		"INTEGRATION_TEST_MODE", "local",
+	) != "local" {
+		t.Skip(
+			"resend cooldown test requires API restart " +
+				"(local mode only)",
+		)
+	}
+
+	restartAPIProcess(t,
+		"AUTH_RESEND_COOLDOWN=2s",
+	)
+	t.Cleanup(func() {
+		restartAPIProcess(t)
+	})
+
+	clearMailbox(t)
+
+	// Setup: Register and confirm user
+	_, token, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, regToken, _ := registerAndConfirm(t, token, email)
+
+	// Step 1: Request deletion
+	clearMailbox(t)
+
+	resp1 := requestAccountDeletion(t, regToken)
+	require.Equal(t,
+		http.StatusNoContent, resp1.StatusCode,
+		"first deletion request must return 204",
+	)
+	resp1.Body.Close()
+
+	msgID1 := waitForEmail(t, email)
+	oldCode := extractVerificationCode(t, msgID1)
+
+	// Step 2: Immediate resend hits cooldown
+	resp2 := requestAccountDeletion(t, regToken)
+	require.Equal(t,
+		http.StatusTooManyRequests, resp2.StatusCode,
+		"immediate resend must return 429",
+	)
+	resp2.Body.Close()
+
+	// Step 3: Wait for cooldown to expire (2s + margin)
+	t.Log("Waiting for resend cooldown to expire")
+
+	time.Sleep(3 * time.Second)
+
+	// Step 4: Resend after cooldown succeeds
+	clearMailbox(t)
+
+	resp3 := requestAccountDeletion(t, regToken)
+	require.Equal(t,
+		http.StatusNoContent, resp3.StatusCode,
+		"resend after cooldown must return 204",
+	)
+	resp3.Body.Close()
+
+	// Step 5: New code arrives and works
+	msgID2 := waitForEmail(t, email)
+	newCode := extractVerificationCode(t, msgID2)
+
+	assert.NotEqual(t, oldCode, newCode,
+		"new code must differ from original",
+	)
+
+	confirmResp := confirmAccountDeletion(
+		t, regToken, newCode,
+	)
+	require.Equal(t,
+		http.StatusNoContent, confirmResp.StatusCode,
+		"new deletion code must work",
+	)
+	confirmResp.Body.Close()
 }
 
 // TestCancelDeletionWhenNotPending verifies that cancelling

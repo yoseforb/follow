@@ -1043,6 +1043,164 @@ func TestForgotPasswordInvalidEmail(t *testing.T) {
 	resp.Body.Close()
 }
 
+// TestForgotPasswordCooldownSilentNoOp verifies that calling
+// forgot-password twice within the cooldown window silently
+// no-ops on the second call — no new email is sent and the
+// original code remains valid.
+func TestForgotPasswordCooldownSilentNoOp(t *testing.T) {
+	clearMailbox(t)
+
+	// Setup: Register and confirm user
+	_, token, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, _, _ = registerAndConfirm(t, token, email)
+
+	// Step 1: Request password reset
+	clearMailbox(t)
+
+	resp1 := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{"email": email},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, resp1.StatusCode,
+		"first forgot-password must return 204",
+	)
+	resp1.Body.Close()
+
+	// Step 2: Extract original code
+	msgID := waitForEmail(t, email)
+	originalCode := extractVerificationCode(t, msgID)
+
+	// Step 3: Immediately call forgot-password again
+	clearMailbox(t)
+
+	resp2 := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{"email": email},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, resp2.StatusCode,
+		"second forgot-password must also return 204 "+
+			"(silent no-op)",
+	)
+	resp2.Body.Close()
+
+	// Step 4: Verify no new email was sent
+	noEmailWithin(t, email, 2*time.Second)
+
+	// Step 5: Original code still works
+	resetResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/reset-password",
+		map[string]any{
+			"email":        email,
+			"code":         originalCode,
+			"new_password": "newsecurepass789",
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, resetResp.StatusCode,
+		"original code must still work after silent no-op",
+	)
+	resetResp.Body.Close()
+}
+
+// TestForgotPasswordCooldownExpiredResend verifies that after
+// the cooldown elapses, calling forgot-password again sends a
+// new code that replaces the original.
+// Local mode only — requires API restart with short cooldown.
+func TestForgotPasswordCooldownExpiredResend(t *testing.T) {
+	if envOrDefault(
+		"INTEGRATION_TEST_MODE", "local",
+	) != "local" {
+		t.Skip(
+			"cooldown expiry test requires API restart " +
+				"(local mode only)",
+		)
+	}
+
+	restartAPIProcess(t,
+		"AUTH_RESEND_COOLDOWN=2s",
+	)
+	t.Cleanup(func() {
+		restartAPIProcess(t)
+	})
+
+	clearMailbox(t)
+
+	// Setup: Register and confirm user
+	_, token, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, _, _ = registerAndConfirm(t, token, email)
+
+	// Step 1: First forgot-password
+	clearMailbox(t)
+
+	resp1 := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{"email": email},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, resp1.StatusCode,
+	)
+	resp1.Body.Close()
+
+	msgID1 := waitForEmail(t, email)
+	oldCode := extractVerificationCode(t, msgID1)
+
+	// Step 2: Wait for cooldown to expire (2s + margin)
+	t.Log("Waiting for cooldown to expire")
+
+	time.Sleep(3 * time.Second)
+
+	// Step 3: Call forgot-password again
+	clearMailbox(t)
+
+	resp2 := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/forgot-password",
+		map[string]any{"email": email},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, resp2.StatusCode,
+	)
+	resp2.Body.Close()
+
+	// Step 4: New email arrives with fresh code
+	msgID2 := waitForEmail(t, email)
+	newCode := extractVerificationCode(t, msgID2)
+
+	assert.NotEqual(t, oldCode, newCode,
+		"new code must differ from original",
+	)
+
+	// Step 5: New code works
+	resetResp := doRequest(
+		t, http.MethodPost,
+		apiURL+"/api/v1/auth/reset-password",
+		map[string]any{
+			"email":        email,
+			"code":         newCode,
+			"new_password": "newsecurepass101",
+		},
+		"",
+	)
+	require.Equal(t,
+		http.StatusNoContent, resetResp.StatusCode,
+		"new code must work after cooldown expiry",
+	)
+	resetResp.Body.Close()
+}
+
 // TestResendTooSoon verifies that resending a verification
 // code before the cooldown expires returns 429.
 func TestResendTooSoon(t *testing.T) {
