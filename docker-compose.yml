@@ -177,6 +177,10 @@ services:
       - FOLLOW_API_ED25519_PRIVATE_KEY=${FOLLOW_API_ED25519_PRIVATE_KEY}
       - GATEWAY_BASE_URL=${GATEWAY_BASE_URL:-http://${HOST_IP:-localhost}:${GATEWAY_HOST_PORT:-8090}}
       - SECURITY_IP_HASH_KEY=${SECURITY_IP_HASH_KEY}
+      - SMTP_HOST=${SMTP_HOST:-smtp.resend.com}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USERNAME=${SMTP_USERNAME:-resend}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
     ports:
       - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
     networks:
