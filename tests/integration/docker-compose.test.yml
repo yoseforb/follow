@@ -64,10 +64,19 @@ services:
       # works there. 15s accommodates the slowest observed stage.
       - REAPER_STALE_THRESHOLD=15s
       # SMTP — routed to Mailpit for test interception.
+      # SMTP_USERNAME and SMTP_PASSWORD must be empty so the
+      # API sends unauthenticated SMTP; Mailpit doesn't
+      # support AUTH and rejects credentials.
       - SMTP_HOST=mailpit
       - SMTP_PORT=1025
+      - SMTP_USERNAME=
+      - SMTP_PASSWORD=
       - SMTP_FROM=noreply@follow.app
       # Short resend cooldown so verification-code tests
       # don't wait 60s between register and resend.
-      - AUTH_RESEND_COOLDOWN=1s
+      - AUTH_RESEND_COOLDOWN=5s
+      # Fast argon2id for tests (OWASP minimum — still
+      # validates the flow but ~10x faster than production).
+      - AUTH_ARGON2ID_MEMORY=15360
+      - AUTH_ARGON2ID_ITERATIONS=1
 
