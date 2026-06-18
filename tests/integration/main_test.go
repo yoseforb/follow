@@ -141,16 +141,7 @@ func setupLocal() {
 		"-runtime-timeout", "0",
 	)
 	apiProcess.Dir = apiDir
-	apiProcess.Env = append(
-		os.Environ(),
-		"GATEWAY_BASE_URL=http://localhost:"+gatewayPort,
-		"RATE_LIMIT_ENABLED=false",
-		"REAPER_SCAN_INTERVAL=1s",
-		"REAPER_STALE_THRESHOLD=2s",
-		"RECLAIMER_IDLE_TIMEOUT=5s",
-		"RECLAIMER_SCAN_INTERVAL=2s",
-		"AUTH_RESEND_COOLDOWN=1s",
-	)
+	apiProcess.Env = buildAPIEnv(gatewayPort)
 	// Setpgid places the process in its own process group. When we later
 	// signal -pgid, both the `go run` parent and the compiled server
 	// grandchild receive the signal, so no orphaned process holds the test

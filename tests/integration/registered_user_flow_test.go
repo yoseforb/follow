@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -88,7 +89,8 @@ func registerAndConfirm(
 		},
 		anonToken,
 	)
-	require.Equal(t, http.StatusOK, regResp.StatusCode,
+	require.Equal(
+		t, http.StatusOK, regResp.StatusCode,
 		"registerAndConfirm: register failed",
 	)
 	regResp.Body.Close()
@@ -102,7 +104,8 @@ func registerAndConfirm(
 		map[string]any{"code": code},
 		anonToken,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, confirmResp.StatusCode,
 		"registerAndConfirm: confirm failed",
 	)
@@ -110,12 +113,14 @@ func registerAndConfirm(
 	confirmBody := decodeJSON(t, confirmResp)
 
 	uid, ok := confirmBody["user_id"].(string)
-	require.True(t, ok,
+	require.True(
+		t, ok,
 		"registerAndConfirm: missing user_id",
 	)
 
 	at, ok := confirmBody["access_token"].(string)
-	require.True(t, ok,
+	require.True(
+		t, ok,
 		"registerAndConfirm: missing access_token",
 	)
 
@@ -162,7 +167,8 @@ func TestRegistrationFullFlow(t *testing.T) {
 
 	route, _ := getBody["route"].(map[string]any)
 	require.NotNil(t, route)
-	assert.Equal(t, "anonymous", route["owner_type"],
+	assert.Equal(
+		t, "anonymous", route["owner_type"],
 		"Step 2: initial owner_type must be anonymous",
 	)
 
@@ -181,12 +187,14 @@ func TestRegistrationFullFlow(t *testing.T) {
 		},
 		token,
 	)
-	require.Equal(t, http.StatusOK, regResp.StatusCode,
+	require.Equal(
+		t, http.StatusOK, regResp.StatusCode,
 		"Step 3: register must return 200",
 	)
 
 	regBody := decodeJSON(t, regResp)
-	assert.Equal(t, userID, regBody["user_id"],
+	assert.Equal(
+		t, userID, regBody["user_id"],
 		"Step 3: user_id must match anonymous user",
 	)
 
@@ -195,7 +203,8 @@ func TestRegistrationFullFlow(t *testing.T) {
 
 	msgID := waitForEmail(t, email)
 	code := extractVerificationCode(t, msgID)
-	require.Len(t, code, 6,
+	require.Len(
+		t, code, 6,
 		"Step 4: code must be 6 digits",
 	)
 
@@ -208,28 +217,34 @@ func TestRegistrationFullFlow(t *testing.T) {
 		map[string]any{"code": code},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, confirmResp.StatusCode,
 		"Step 5: confirm must return 200",
 	)
 
 	confirmBody := decodeJSON(t, confirmResp)
 	newUserID, _ := confirmBody["user_id"].(string)
-	assert.NotEqual(t, userID, newUserID,
+	assert.NotEqual(
+		t, userID, newUserID,
 		"Step 5: user_id must change after PK swap",
 	)
-	assert.NotEmpty(t, newUserID,
+	assert.NotEmpty(
+		t, newUserID,
 		"Step 5: user_id must not be empty",
 	)
 
 	regToken, ok := confirmBody["access_token"].(string)
-	require.True(t, ok,
+	require.True(
+		t, ok,
 		"Step 5: response must contain access_token",
 	)
-	require.NotEmpty(t, regToken,
+	require.NotEmpty(
+		t, regToken,
 		"Step 5: access_token must not be empty",
 	)
-	assert.NotEmpty(t, confirmBody["access_token_expires_at"],
+	assert.NotEmpty(
+		t, confirmBody["access_token_expires_at"],
 		"Step 5: access_token_expires_at must be present",
 	)
 
@@ -273,7 +288,8 @@ func TestLoginFlow(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, loginResp.StatusCode,
 		"Step 1: login must return 200",
 	)
@@ -295,7 +311,8 @@ func TestLoginFlow(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized, badPwResp.StatusCode,
 		"Step 2: wrong password must return 401",
 	)
@@ -318,7 +335,8 @@ func TestLoginFlow(t *testing.T) {
 		},
 		tokenB,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, pendingResp.StatusCode,
 		"Step 3: register B must succeed",
 	)
@@ -336,7 +354,8 @@ func TestLoginFlow(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		pendingLoginResp.StatusCode,
 		"Step 3: pending user login must return 401",
@@ -371,7 +390,8 @@ func TestDuplicateEmailRejection(t *testing.T) {
 		},
 		tokenB,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusConflict, dupResp.StatusCode,
 		"duplicate email must return 409",
 	)
@@ -427,7 +447,8 @@ func TestRoutesSurviveRegistration(t *testing.T) {
 			apiURL+"/api/v1/routes/"+rid,
 			nil, regToken,
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusOK, resp.StatusCode,
 			"route %s must be accessible", rid,
 		)
@@ -476,7 +497,8 @@ func TestVerificationCodeSecurity(t *testing.T) {
 			map[string]any{"code": "000000"},
 			token,
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusBadRequest,
 			wrongResp.StatusCode,
 			"attempt %d: wrong code must return 400",
@@ -494,7 +516,8 @@ func TestVerificationCodeSecurity(t *testing.T) {
 		map[string]any{"code": "000000"},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusTooManyRequests,
 		exhaustedResp.StatusCode,
 		"6th attempt must return 429",
@@ -506,9 +529,9 @@ func TestVerificationCodeSecurity(t *testing.T) {
 
 	clearMailbox(t)
 
-	// Wait for resend cooldown (AUTH_RESEND_COOLDOWN=1s
-	// in test env; 2s sleep for safety margin)
-	time.Sleep(2 * time.Second)
+	// Wait for resend cooldown (AUTH_RESEND_COOLDOWN=5s
+	// in test env + margin)
+	time.Sleep(6 * time.Second)
 
 	resendResp := doRequest(
 		t, http.MethodPost,
@@ -516,7 +539,8 @@ func TestVerificationCodeSecurity(t *testing.T) {
 		map[string]any{},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent,
 		resendResp.StatusCode,
 		"resend must return 204",
@@ -535,7 +559,8 @@ func TestVerificationCodeSecurity(t *testing.T) {
 		map[string]any{"code": newCode},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, confirmResp.StatusCode,
 		"confirm with new code must return 200",
 	)
@@ -566,7 +591,8 @@ func TestPasswordResetFlow(t *testing.T) {
 		map[string]any{"email": email},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, forgotResp.StatusCode,
 		"forgot-password must return 204",
 	)
@@ -594,7 +620,8 @@ func TestPasswordResetFlow(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resetResp.StatusCode,
 		"reset-password must return 204",
 	)
@@ -612,7 +639,8 @@ func TestPasswordResetFlow(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, newPwResp.StatusCode,
 		"login with new password must return 200",
 	)
@@ -630,7 +658,8 @@ func TestPasswordResetFlow(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized, oldPwResp.StatusCode,
 		"login with old password must return 401",
 	)
@@ -657,7 +686,8 @@ func TestRegisterAlreadyRegistered(t *testing.T) {
 		},
 		regToken,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusConflict, resp.StatusCode,
 		"registered user re-register must return 409",
 	)
@@ -697,13 +727,15 @@ func TestRegisterAlreadyPending(t *testing.T) {
 		},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusConflict, dupResp.StatusCode,
 		"pending user re-register must return 409",
 	)
 
 	body := decodeJSON(t, dupResp)
-	assert.Equal(t,
+	assert.Equal(
+		t,
 		"registration_already_started", body["name"],
 	)
 }
@@ -720,7 +752,8 @@ func TestRegisterNoAuth(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized, resp.StatusCode,
 		"register without JWT must return 401",
 	)
@@ -741,7 +774,8 @@ func TestRegisterInvalidEmail(t *testing.T) {
 		},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusBadRequest, resp.StatusCode,
 		"invalid email must return 400",
 	)
@@ -762,7 +796,8 @@ func TestRegisterShortPassword(t *testing.T) {
 		},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusBadRequest, resp.StatusCode,
 		"short password must return 400",
 	)
@@ -780,13 +815,15 @@ func TestConfirmNotPending(t *testing.T) {
 		map[string]any{"code": "123456"},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusBadRequest, resp.StatusCode,
 		"confirm on anonymous user must return 400",
 	)
 
 	body := decodeJSON(t, resp)
-	assert.Equal(t,
+	assert.Equal(
+		t,
 		"registration_not_started", body["name"],
 	)
 }
@@ -802,13 +839,15 @@ func TestResendNotPending(t *testing.T) {
 		map[string]any{},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusBadRequest, resp.StatusCode,
 		"resend on anonymous user must return 400",
 	)
 
 	body := decodeJSON(t, resp)
-	assert.Equal(t,
+	assert.Equal(
+		t,
 		"registration_not_started", body["name"],
 	)
 }
@@ -825,7 +864,8 @@ func TestLoginNonExistentEmail(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized, resp.StatusCode,
 		"non-existent email login must return 401",
 	)
@@ -846,7 +886,8 @@ func TestForgotPasswordNonExistentEmail(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resp.StatusCode,
 		"forgot-password for unknown email must return 204",
 	)
@@ -865,7 +906,8 @@ func TestForgotPasswordAnonymousUser(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resp.StatusCode,
 		"forgot-password for anonymous must return 204",
 	)
@@ -889,7 +931,8 @@ func TestResetPasswordWrongCode(t *testing.T) {
 		map[string]any{"email": email},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, forgotResp.StatusCode,
 	)
 	forgotResp.Body.Close()
@@ -907,7 +950,8 @@ func TestResetPasswordWrongCode(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusBadRequest, resp.StatusCode,
 		"reset with wrong code must return 400",
 	)
@@ -930,7 +974,8 @@ func TestResetPasswordShortNewPassword(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusBadRequest, resp.StatusCode,
 		"reset with short password must return 400",
 	)
@@ -956,7 +1001,8 @@ func TestRegisteredTokenWorksForAuthEndpoints(t *testing.T) {
 		nil,
 		regToken,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, getResp.StatusCode,
 		"registered token must access user endpoint",
 	)
@@ -969,7 +1015,8 @@ func TestRegisteredTokenWorksForAuthEndpoints(t *testing.T) {
 		map[string]any{"refresh_token": regRefreshToken},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, refreshResp.StatusCode,
 		"registered refresh token must refresh",
 	)
@@ -999,7 +1046,8 @@ func TestRegisteredTokenWorksForAuthEndpoints(t *testing.T) {
 		nil,
 		loginToken,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, getResp2.StatusCode,
 		"login token must access user endpoint",
 	)
@@ -1018,7 +1066,8 @@ func TestLoginInvalidEmailFormat(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusBadRequest, resp.StatusCode,
 		"login with invalid email must return 400",
 	)
@@ -1036,7 +1085,8 @@ func TestForgotPasswordInvalidEmail(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusBadRequest, resp.StatusCode,
 		"forgot-password with invalid email must return 400",
 	)
@@ -1064,7 +1114,8 @@ func TestForgotPasswordCooldownSilentNoOp(t *testing.T) {
 		map[string]any{"email": email},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resp1.StatusCode,
 		"first forgot-password must return 204",
 	)
@@ -1083,7 +1134,8 @@ func TestForgotPasswordCooldownSilentNoOp(t *testing.T) {
 		map[string]any{"email": email},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resp2.StatusCode,
 		"second forgot-password must also return 204 "+
 			"(silent no-op)",
@@ -1104,7 +1156,8 @@ func TestForgotPasswordCooldownSilentNoOp(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resetResp.StatusCode,
 		"original code must still work after silent no-op",
 	)
@@ -1125,7 +1178,8 @@ func TestForgotPasswordCooldownExpiredResend(t *testing.T) {
 		)
 	}
 
-	restartAPIProcess(t,
+	restartAPIProcess(
+		t,
 		"AUTH_RESEND_COOLDOWN=2s",
 	)
 	t.Cleanup(func() {
@@ -1148,7 +1202,8 @@ func TestForgotPasswordCooldownExpiredResend(t *testing.T) {
 		map[string]any{"email": email},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resp1.StatusCode,
 	)
 	resp1.Body.Close()
@@ -1170,7 +1225,8 @@ func TestForgotPasswordCooldownExpiredResend(t *testing.T) {
 		map[string]any{"email": email},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resp2.StatusCode,
 	)
 	resp2.Body.Close()
@@ -1179,7 +1235,8 @@ func TestForgotPasswordCooldownExpiredResend(t *testing.T) {
 	msgID2 := waitForEmail(t, email)
 	newCode := extractVerificationCode(t, msgID2)
 
-	assert.NotEqual(t, oldCode, newCode,
+	assert.NotEqual(
+		t, oldCode, newCode,
 		"new code must differ from original",
 	)
 
@@ -1194,7 +1251,8 @@ func TestForgotPasswordCooldownExpiredResend(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resetResp.StatusCode,
 		"new code must work after cooldown expiry",
 	)
@@ -1222,15 +1280,15 @@ func TestResendTooSoon(t *testing.T) {
 	regResp.Body.Close()
 
 	// Resend immediately — should be too soon
-	// (AUTH_RESEND_COOLDOWN=1s in test env, but we call
-	// within milliseconds of register)
+	// (AUTH_RESEND_COOLDOWN=5s in test env)
 	resendResp := doRequest(
 		t, http.MethodPost,
 		apiURL+"/api/v1/auth/resend-verification",
 		map[string]any{},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusTooManyRequests,
 		resendResp.StatusCode,
 		"immediate resend must return 429",
@@ -1249,7 +1307,8 @@ func TestConfirmNoAuth(t *testing.T) {
 		map[string]any{"code": "123456"},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized, resp.StatusCode,
 		"confirm without JWT must return 401",
 	)
@@ -1265,7 +1324,8 @@ func TestResendNoAuth(t *testing.T) {
 		map[string]any{},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized, resp.StatusCode,
 		"resend without JWT must return 401",
 	)
@@ -1368,13 +1428,16 @@ func TestConcurrentRegisterSameEmail(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, 1, ok,
+	assert.Equal(
+		t, 1, ok,
 		"exactly one racer must succeed (200)",
 	)
-	assert.Equal(t, racers-1, conflict,
+	assert.Equal(
+		t, racers-1, conflict,
 		"all other racers must get 409",
 	)
-	assert.Equal(t, 0, other,
+	assert.Equal(
+		t, 0, other,
 		"no unexpected status codes",
 	)
 }
@@ -1412,7 +1475,8 @@ func TestConfirmRegistrationIdempotency(t *testing.T) {
 		map[string]any{"code": code},
 		token,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, firstResp.StatusCode,
 		"first confirm must succeed",
 	)
@@ -1440,7 +1504,8 @@ func TestConfirmRegistrationIdempotency(t *testing.T) {
 	status := secondResp.StatusCode
 	secondResp.Body.Close()
 
-	assert.True(t,
+	assert.True(
+		t,
 		status == http.StatusConflict ||
 			status == http.StatusBadRequest,
 		"second confirm must fail (got %d)", status,
@@ -1466,7 +1531,8 @@ func TestResetPasswordIdempotency(t *testing.T) {
 		map[string]any{"email": email},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, forgotResp.StatusCode,
 	)
 	forgotResp.Body.Close()
@@ -1485,7 +1551,8 @@ func TestResetPasswordIdempotency(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, firstResp.StatusCode,
 		"first reset must succeed",
 	)
@@ -1505,7 +1572,8 @@ func TestResetPasswordIdempotency(t *testing.T) {
 
 	// Verification record was deleted; expect 400
 	// (invalid_code or code_expired) or similar.
-	assert.NotEqual(t,
+	assert.NotEqual(
+		t,
 		http.StatusNoContent,
 		secondResp.StatusCode,
 		"second reset with same code must fail",
@@ -1522,7 +1590,8 @@ func TestResetPasswordIdempotency(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, loginResp.StatusCode,
 		"login with first new password must work",
 	)
@@ -1538,7 +1607,8 @@ func TestResetPasswordIdempotency(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		loginResp2.StatusCode,
 		"login with second password must fail",
@@ -1555,6 +1625,7 @@ func TestResetPasswordIdempotency(t *testing.T) {
 
 // restartAPIProcess kills the current follow-api subprocess
 // and starts a new one with the given extra env vars.
+// Extra env vars override base defaults with the same key.
 // Local mode only — docker compose cannot cleanly restart
 // a single container without reconciling the full project.
 func restartAPIProcess(
@@ -1584,7 +1655,29 @@ func restartAPIProcess(
 		"-runtime-timeout", "0",
 	)
 	apiProcess.Dir = apiDir
-	apiProcess.Env = append(
+	apiProcess.Env = buildAPIEnv(gatewayPort, extraEnv...)
+	apiProcess.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+	apiDrainWait = pipeOutput(apiProcess)
+
+	err = apiProcess.Start()
+	require.NoError(
+		t, err,
+		"restartAPIProcess: failed to start",
+	)
+
+	waitForService(apiURL + "/health")
+}
+
+// buildAPIEnv constructs the env slice for the follow-api
+// subprocess. Base defaults can be overridden by extraEnv
+// entries with the same key (last value wins via dedup).
+func buildAPIEnv(
+	gatewayPort string,
+	extraEnv ...string,
+) []string {
+	base := append(
 		os.Environ(),
 		"GATEWAY_BASE_URL=http://localhost:"+gatewayPort,
 		"RATE_LIMIT_ENABLED=false",
@@ -1592,22 +1685,38 @@ func restartAPIProcess(
 		"REAPER_STALE_THRESHOLD=2s",
 		"RECLAIMER_IDLE_TIMEOUT=5s",
 		"RECLAIMER_SCAN_INTERVAL=2s",
-		"AUTH_RESEND_COOLDOWN=1s",
+		"AUTH_RESEND_COOLDOWN=5s",
+		"SMTP_HOST=localhost",
+		"SMTP_PORT=1025",
+		"SMTP_USERNAME=",
+		"SMTP_PASSWORD=",
+		"AUTH_ARGON2ID_MEMORY=15360",
+		"AUTH_ARGON2ID_ITERATIONS=1",
 	)
-	apiProcess.Env = append(
-		apiProcess.Env, extraEnv...,
-	)
-	apiProcess.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
+	base = append(base, extraEnv...)
+	return dedupEnv(base)
+}
+
+// dedupEnv removes duplicate env var keys, keeping the last
+// occurrence. This ensures extraEnv overrides base defaults.
+func dedupEnv(env []string) []string {
+	seen := make(map[string]int, len(env))
+	for i, entry := range env {
+		if k, _, ok := strings.Cut(entry, "="); ok {
+			seen[k] = i
+		}
 	}
-	apiDrainWait = pipeOutput(apiProcess)
 
-	err = apiProcess.Start()
-	require.NoError(t, err,
-		"restartAPIProcess: failed to start",
-	)
+	result := make([]string, 0, len(seen))
+	for i, entry := range env {
+		if k, _, ok := strings.Cut(entry, "="); ok {
+			if seen[k] == i {
+				result = append(result, entry)
+			}
+		}
+	}
 
-	waitForService(apiURL + "/health")
+	return result
 }
 
 // TestTokenExpiry restarts the API with a 2s JWT TTL, runs
@@ -1638,7 +1747,8 @@ func TestTokenExpiry(t *testing.T) {
 			map[string]any{},
 			token,
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusOK, resp.StatusCode,
 			"fresh anonymous token must work",
 		)
@@ -1652,7 +1762,8 @@ func TestTokenExpiry(t *testing.T) {
 			map[string]any{},
 			token,
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusUnauthorized,
 			expResp.StatusCode,
 			"expired anonymous token must return 401",
@@ -1674,7 +1785,8 @@ func TestTokenExpiry(t *testing.T) {
 			apiURL+"/api/v1/users/anonymous/"+newUserID,
 			nil, regToken,
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusOK, resp.StatusCode,
 			"fresh registered token must work",
 		)
@@ -1687,7 +1799,8 @@ func TestTokenExpiry(t *testing.T) {
 			apiURL+"/api/v1/users/anonymous/"+newUserID,
 			nil, regToken,
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusUnauthorized,
 			expResp.StatusCode,
 			"expired registered token must return 401",
@@ -1703,7 +1816,8 @@ func TestTokenExpiry(t *testing.T) {
 			},
 			"",
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusOK, loginResp.StatusCode,
 		)
 
@@ -1717,7 +1831,8 @@ func TestTokenExpiry(t *testing.T) {
 			apiURL+"/api/v1/users/anonymous/"+newUserID,
 			nil, freshToken,
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusOK, freshResp.StatusCode,
 			"fresh login token must work",
 		)
@@ -1737,7 +1852,8 @@ func TestTokenExpiry(t *testing.T) {
 			},
 			"",
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusOK, refreshResp.StatusCode,
 			"refresh within TTL must succeed",
 		)
@@ -1755,7 +1871,8 @@ func TestTokenExpiry(t *testing.T) {
 			map[string]any{},
 			newToken,
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusOK, resp.StatusCode,
 			"refreshed token must still be valid",
 		)
@@ -1769,7 +1886,8 @@ func TestTokenExpiry(t *testing.T) {
 			map[string]any{},
 			newToken,
 		)
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusUnauthorized,
 			expResp.StatusCode,
 			"refreshed token must eventually expire",
@@ -1807,7 +1925,8 @@ func TestLogoutSingleDevice(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, loginResp.StatusCode,
 	)
 
@@ -1828,7 +1947,8 @@ func TestLogoutSingleDevice(t *testing.T) {
 		nil,
 		accessToken,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, logoutResp.StatusCode,
 		"logout must return 204",
 	)
@@ -1845,7 +1965,8 @@ func TestLogoutSingleDevice(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		refreshResp.StatusCode,
 		"refresh after logout must return 401",
@@ -1864,7 +1985,8 @@ func TestLogoutSingleDevice(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, reloginResp.StatusCode,
 		"login after logout must succeed",
 	)
@@ -1939,7 +2061,8 @@ func TestLogoutAllDevices(t *testing.T) {
 		nil,
 		tokenA,
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, logoutResp.StatusCode,
 		"logout-all must return 204",
 	)
@@ -1956,7 +2079,8 @@ func TestLogoutAllDevices(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		refreshRespA.StatusCode,
 		"device A refresh after logout-all must return 401",
@@ -1971,7 +2095,8 @@ func TestLogoutAllDevices(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		refreshRespB.StatusCode,
 		"device B refresh after logout-all must return 401",
@@ -1990,7 +2115,8 @@ func TestLogoutAllDevices(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, freshLogin.StatusCode,
 		"login after logout-all must succeed",
 	)
@@ -2038,7 +2164,8 @@ func TestPasswordResetInvalidatesSessions(t *testing.T) {
 		map[string]any{"email": email},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, forgotResp.StatusCode,
 	)
 	forgotResp.Body.Close()
@@ -2061,7 +2188,8 @@ func TestPasswordResetInvalidatesSessions(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resetResp.StatusCode,
 	)
 	resetResp.Body.Close()
@@ -2077,7 +2205,8 @@ func TestPasswordResetInvalidatesSessions(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		refreshResp.StatusCode,
 		"refresh after password reset must return 401",
@@ -2096,7 +2225,8 @@ func TestPasswordResetInvalidatesSessions(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, newLoginResp.StatusCode,
 		"login with new password must succeed",
 	)
@@ -2114,7 +2244,8 @@ func TestPasswordResetInvalidatesSessions(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		oldLoginResp.StatusCode,
 		"login with old password must return 401",
@@ -2136,7 +2267,8 @@ func TestStaleAnonymousTokenAfterPromotion(t *testing.T) {
 	t.Log("Step 1: Create anonymous user")
 
 	anonUserID, anonToken, anonRefresh := createAnonymousUser(t)
-	require.NotEmpty(t, anonRefresh,
+	require.NotEmpty(
+		t, anonRefresh,
 		"anonymous user must have a refresh token",
 	)
 
@@ -2147,7 +2279,8 @@ func TestStaleAnonymousTokenAfterPromotion(t *testing.T) {
 	newUserID, regToken, _ := registerAndConfirm(
 		t, anonToken, email,
 	)
-	require.NotEqual(t, anonUserID, newUserID,
+	require.NotEqual(
+		t, anonUserID, newUserID,
 		"user ID must change after PK swap",
 	)
 
@@ -2196,7 +2329,8 @@ func TestStaleAnonymousTokenAfterPromotion(t *testing.T) {
 		status := getResp.StatusCode
 		getResp.Body.Close()
 
-		require.True(t,
+		require.True(
+			t,
 			status == http.StatusUnauthorized ||
 				status == http.StatusNotFound,
 			"API call with stale token must return "+
@@ -2206,7 +2340,8 @@ func TestStaleAnonymousTokenAfterPromotion(t *testing.T) {
 		// Server rejected the refresh outright — also valid
 		refreshResp.Body.Close()
 
-		require.Equal(t,
+		require.Equal(
+			t,
 			http.StatusUnauthorized,
 			refreshResp.StatusCode,
 			"rejected anonymous refresh must return 401",
@@ -2257,7 +2392,8 @@ func TestRefreshTokenRotationReuseDetection(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, refreshResp.StatusCode,
 		"first refresh must succeed",
 	)
@@ -2266,7 +2402,8 @@ func TestRefreshTokenRotationReuseDetection(t *testing.T) {
 
 	newRefresh, _ := refreshBody["refresh_token"].(string)
 	require.NotEmpty(t, newRefresh)
-	require.NotEqual(t, oldRefresh, newRefresh,
+	require.NotEqual(
+		t, oldRefresh, newRefresh,
 		"refresh must return a new token",
 	)
 
@@ -2284,7 +2421,8 @@ func TestRefreshTokenRotationReuseDetection(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		replayResp.StatusCode,
 		"replayed old refresh token must return 401",
@@ -2303,7 +2441,8 @@ func TestRefreshTokenRotationReuseDetection(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		newRefreshResp.StatusCode,
 		"rotated token must also return 401 "+
@@ -2329,7 +2468,8 @@ func TestLogoutWithAnonymousToken(t *testing.T) {
 	status := resp.StatusCode
 	resp.Body.Close()
 
-	require.True(t,
+	require.True(
+		t,
 		status >= 200 && status < 500,
 		"logout with anonymous token must not return 5xx "+
 			"(got %d)", status,
@@ -2352,7 +2492,8 @@ func TestLogoutAllWithAnonymousToken(t *testing.T) {
 	status := resp.StatusCode
 	resp.Body.Close()
 
-	require.True(t,
+	require.True(
+		t,
 		status >= 200 && status < 500,
 		"logout-all with anonymous token must not return "+
 			"5xx (got %d)", status,
@@ -2368,7 +2509,8 @@ func TestLogoutNoAuth(t *testing.T) {
 		nil,
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized, resp.StatusCode,
 		"logout without JWT must return 401",
 	)
@@ -2384,7 +2526,8 @@ func TestLogoutAllNoAuth(t *testing.T) {
 		nil,
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized, resp.StatusCode,
 		"logout-all without JWT must return 401",
 	)
@@ -2510,7 +2653,8 @@ func TestConcurrentLogoutAndRefresh(t *testing.T) {
 	close(results)
 
 	for r := range results {
-		require.True(t,
+		require.True(
+			t,
 			r.status >= 200 && r.status < 500,
 			"%s must not return 5xx (got %d)",
 			r.name, r.status,
@@ -2580,7 +2724,8 @@ func TestPasswordResetKillsMultipleSessions(t *testing.T) {
 		map[string]any{"email": email},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, forgotResp.StatusCode,
 	)
 	forgotResp.Body.Close()
@@ -2600,7 +2745,8 @@ func TestPasswordResetKillsMultipleSessions(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusNoContent, resetResp.StatusCode,
 	)
 	resetResp.Body.Close()
@@ -2616,7 +2762,8 @@ func TestPasswordResetKillsMultipleSessions(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		refreshRespA.StatusCode,
 		"device A refresh after reset must return 401",
@@ -2631,7 +2778,8 @@ func TestPasswordResetKillsMultipleSessions(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusUnauthorized,
 		refreshRespB.StatusCode,
 		"device B refresh after reset must return 401",
@@ -2650,7 +2798,8 @@ func TestPasswordResetKillsMultipleSessions(t *testing.T) {
 		},
 		"",
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		http.StatusOK, newLogin.StatusCode,
 		"login with new password must succeed",
 	)
