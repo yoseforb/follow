@@ -8,3 +8,4 @@
 # and fresh clones can run the test suite without external setup.
 tests/integration/.env:generic-api-key:34
 tests/integration/.env:generic-api-key:35
+tests/integration/.env:generic-api-key:24
