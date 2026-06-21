@@ -322,6 +322,66 @@ services:
 
   # ── Observability (opt-in) ─────────────────────────────────────────
 
+  loki:
+    image: grafana/loki:3.7.0
+    profiles: [observability]
+    container_name: ${LOKI_CONTAINER_NAME:-follow-loki}
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./observability/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    ports:
+      - "127.0.0.1:${LOKI_HOST_PORT:-3100}:3100"
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "/usr/bin/loki", "-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  alloy:
+    image: grafana/alloy:v1.16.1
+    profiles: [observability]
+    container_name: ${ALLOY_CONTAINER_NAME:-follow-alloy}
+    restart: unless-stopped
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    networks:
+      - internal
+    depends_on:
+      loki:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+
   prometheus:
     image: prom/prometheus:v3.4.1
     profiles: [observability]
@@ -374,6 +434,7 @@ services:
       - internal
     depends_on:
       - prometheus
+      - loki
     logging:
       driver: json-file
       options:
@@ -393,6 +454,10 @@ volumes:
   valkey_data:
     driver: local
   minio_data:
+    driver: local
+  loki_data:
+    driver: local
+  alloy_data:
     driver: local
   prometheus_data:
     driver: local
