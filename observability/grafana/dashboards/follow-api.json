@@ -15,6 +15,8 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
+          "unit": "reqps",
+          "decimals": 1,
           "color": { "mode": "thresholds" },
           "thresholds": { "steps": [{ "color": "green", "value": null }] }
         }
@@ -89,6 +91,8 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
+          "unit": "ops",
+          "decimals": 1,
           "color": { "mode": "thresholds" },
           "thresholds": {
             "steps": [
@@ -209,6 +213,8 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
+          "unit": "ops",
+          "decimals": 1,
           "color": { "mode": "thresholds" },
           "thresholds": {
             "steps": [
@@ -243,13 +249,17 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "decimals": 0 }
+      },
       "gridPos": { "h": 6, "w": 12, "x": 0, "y": 22 },
       "id": 11,
-      "title": "Job Runs (last value by status)",
+      "title": "Job Runs (last 1h)",
+      "description": "Number of job executions per job and status in the last hour",
       "type": "table",
       "targets": [
         {
-          "expr": "follow_api_scheduler_job_runs_total",
+          "expr": "sum(increase(follow_api_scheduler_job_runs_total[1h])) by (job, status)",
           "legendFormat": "{{job}} ({{status}})",
           "format": "table",
           "instant": true
@@ -285,7 +295,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 20 } }
+        "defaults": { "unit": "short", "decimals": 0, "custom": { "drawStyle": "line", "fillOpacity": 20 } }
       },
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 29 },
       "id": 13,
@@ -300,15 +310,20 @@
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line" } }
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
       },
-      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 29 },
+      "gridPos": { "h": 6, "w": 4, "x": 6, "y": 29 },
       "id": 14,
-      "title": "SSE Connections + Events / sec",
-      "type": "timeseries",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "SSE Active Connections",
+      "type": "stat",
       "targets": [
-        { "expr": "follow_api_sse_active_connections", "legendFormat": "active connections" },
-        { "expr": "sum(rate(follow_api_sse_events_sent_total[5m])) by (type)", "legendFormat": "events: {{type}}" }
+        { "expr": "follow_api_sse_active_connections", "legendFormat": "active" }
       ]
     },
     {
@@ -316,7 +331,20 @@
       "fieldConfig": {
         "defaults": { "unit": "ops", "custom": { "drawStyle": "line" } }
       },
-      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 29 },
+      "gridPos": { "h": 6, "w": 4, "x": 10, "y": 29 },
+      "id": 24,
+      "title": "SSE Events / sec",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "sum(rate(follow_api_sse_events_sent_total[5m])) by (type)", "legendFormat": "{{type}}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "drawStyle": "line" } }
+      },
+      "gridPos": { "h": 6, "w": 5, "x": 14, "y": 29 },
       "id": 15,
       "title": "Valkey Consumer Rate",
       "type": "timeseries",
@@ -332,7 +360,7 @@
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "drawStyle": "line" } }
       },
-      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 29 },
+      "gridPos": { "h": 6, "w": 5, "x": 19, "y": 29 },
       "id": 16,
       "title": "Storage + Valkey p95 Duration",
       "type": "timeseries",
@@ -406,7 +434,7 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
       "id": 106,
-      "title": "Background Jobs",
+      "title": "Background Jobs & Service Health",
       "type": "row"
     },
     {
@@ -429,12 +457,37 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "dateTimeAsIso",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] }
+        }
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 43 },
+      "id": 22,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "value"
+      },
+      "title": "Server Started At",
+      "description": "Timestamp when the server process started",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "follow_api_server_start_time_seconds * 1000",
+          "legendFormat": "started"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
           "color": { "mode": "thresholds" },
           "thresholds": { "steps": [{ "color": "green", "value": null }] }
         }
       },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 43 },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 43 },
       "id": 21,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "title": "Uptime",
@@ -465,5 +518,5 @@
   "time": { "from": "now-30m", "to": "now" },
   "title": "Follow API",
   "uid": "follow-api-overview",
-  "version": 2
+  "version": 3
 }

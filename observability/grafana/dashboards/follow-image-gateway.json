@@ -15,6 +15,8 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
+          "unit": "reqps",
+          "decimals": 1,
           "color": { "mode": "thresholds" },
           "thresholds": { "steps": [{ "color": "green", "value": null }] }
         }
@@ -96,8 +98,16 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
+          "unit": "short",
+          "decimals": 0,
           "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 9 }] }
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 9 }
+            ]
+          }
         }
       },
       "gridPos": { "h": 6, "w": 4, "x": 0, "y": 8 },
@@ -113,8 +123,16 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
+          "unit": "short",
+          "decimals": 0,
           "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 9 }] }
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 9 }
+            ]
+          }
         }
       },
       "gridPos": { "h": 6, "w": 4, "x": 4, "y": 8 },
@@ -178,8 +196,15 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
+          "unit": "ops",
+          "decimals": 1,
           "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
         }
       },
       "gridPos": { "h": 6, "w": 4, "x": 8, "y": 14 },
@@ -299,11 +324,11 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(follow_gateway_image_upload_size_bytes_bucket[5m]))",
+          "expr": "histogram_quantile(0.50, sum(rate(follow_gateway_image_upload_size_bytes_bucket[5m])) by (le))",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.95, rate(follow_gateway_image_upload_size_bytes_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, sum(rate(follow_gateway_image_upload_size_bytes_bucket[5m])) by (le))",
           "legendFormat": "p95"
         }
       ]
@@ -319,11 +344,11 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(follow_gateway_image_processed_size_bytes_bucket[5m]))",
+          "expr": "histogram_quantile(0.50, sum(rate(follow_gateway_image_processed_size_bytes_bucket[5m])) by (le))",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.95, rate(follow_gateway_image_processed_size_bytes_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, sum(rate(follow_gateway_image_processed_size_bytes_bucket[5m])) by (le))",
           "legendFormat": "p95"
         }
       ]
@@ -339,11 +364,11 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(follow_gateway_image_original_pixels_bucket[5m])) / 1e6",
+          "expr": "histogram_quantile(0.50, sum(rate(follow_gateway_image_original_pixels_bucket[5m])) by (le)) / 1e6",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.95, rate(follow_gateway_image_original_pixels_bucket[5m])) / 1e6",
+          "expr": "histogram_quantile(0.95, sum(rate(follow_gateway_image_original_pixels_bucket[5m])) by (le)) / 1e6",
           "legendFormat": "p95"
         }
       ]
@@ -351,7 +376,7 @@
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10 } }
+        "defaults": { "unit": "short", "decimals": 1, "custom": { "drawStyle": "line", "fillOpacity": 10 } }
       },
       "gridPos": { "h": 6, "w": 6, "x": 18, "y": 28 },
       "id": 18,
@@ -359,11 +384,11 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(follow_gateway_image_blur_regions_applied_bucket[5m]))",
+          "expr": "histogram_quantile(0.50, sum(rate(follow_gateway_image_blur_regions_applied_bucket[5m])) by (le))",
           "legendFormat": "p50"
         },
         {
-          "expr": "histogram_quantile(0.95, rate(follow_gateway_image_blur_regions_applied_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, sum(rate(follow_gateway_image_blur_regions_applied_bucket[5m])) by (le))",
           "legendFormat": "p95"
         }
       ]
@@ -380,7 +405,7 @@
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "drawStyle": "line" } }
       },
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 35 },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 35 },
       "id": 19,
       "title": "MinIO Upload Duration p95",
       "type": "timeseries",
@@ -396,18 +421,30 @@
       "fieldConfig": {
         "defaults": { "unit": "ops", "custom": { "drawStyle": "line" } }
       },
-      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 35 },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 35 },
       "id": 20,
-      "title": "Valkey Publish Rate + Duration p95",
+      "title": "Valkey Publish Rate",
       "type": "timeseries",
       "targets": [
         {
           "expr": "sum(rate(follow_gateway_messaging_publish_total[5m])) by (status)",
-          "legendFormat": "rate: {{status}}"
-        },
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line" } }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 35 },
+      "id": 25,
+      "title": "Valkey Publish Duration p95",
+      "type": "timeseries",
+      "targets": [
         {
           "expr": "histogram_quantile(0.95, sum(rate(follow_gateway_messaging_publish_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "duration p95"
+          "legendFormat": "p95"
         }
       ]
     },
@@ -415,11 +452,19 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
+          "unit": "ops",
+          "decimals": 1,
           "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] }
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
         }
       },
-      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 35 },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 35 },
       "id": 21,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "title": "Progress Retries / sec",
@@ -435,7 +480,7 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
       "id": 105,
-      "title": "Auth & Lifecycle",
+      "title": "Auth & Service Health",
       "type": "row"
     },
     {
@@ -458,12 +503,37 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "dateTimeAsIso",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] }
+        }
+      },
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 42 },
+      "id": 24,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "value"
+      },
+      "title": "Server Started At",
+      "description": "Timestamp when the server process started",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "follow_gateway_server_start_time_seconds * 1000",
+          "legendFormat": "started"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
           "color": { "mode": "thresholds" },
           "thresholds": { "steps": [{ "color": "green", "value": null }] }
         }
       },
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 42 },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 42 },
       "id": 23,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "title": "Uptime",
@@ -494,5 +564,5 @@
   "time": { "from": "now-30m", "to": "now" },
   "title": "Follow Image Gateway",
   "uid": "follow-gateway-overview",
-  "version": 1
+  "version": 2
 }
