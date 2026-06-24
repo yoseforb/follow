@@ -1,0 +1,306 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 80 },
+            { "color": "red", "value": 95 }
+          ]}
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Active Connections",
+      "type": "stat",
+      "targets": [
+        { "expr": "pg_stat_activity_count{job=\"postgres-exporter\",state=\"active\"}", "legendFormat": "active" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "blue", "value": null }
+          ]}
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Total Connections",
+      "type": "stat",
+      "targets": [
+        { "expr": "sum(pg_stat_activity_count{job=\"postgres-exporter\"})", "legendFormat": "total" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "min": 0,
+          "max": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "yellow", "value": 0.9 },
+            { "color": "green", "value": 0.99 }
+          ]}
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Cache Hit Ratio",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "pg_stat_database_blks_hit{job=\"postgres-exporter\",datname=\"$database\"} / (pg_stat_database_blks_hit{job=\"postgres-exporter\",datname=\"$database\"} + pg_stat_database_blks_read{job=\"postgres-exporter\",datname=\"$database\"})",
+          "legendFormat": "hit ratio"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bool_yes_no",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 1 }
+          ]}
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "PostgreSQL Up",
+      "type": "stat",
+      "targets": [
+        { "expr": "pg_up{job=\"postgres-exporter\"}", "legendFormat": "up" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+      "id": 101,
+      "title": "Connections",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 20, "stacking": { "mode": "normal" } }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "id": 5,
+      "title": "Connections by State",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "pg_stat_activity_count{job=\"postgres-exporter\"}", "legendFormat": "{{state}}" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "id": 6,
+      "title": "Max Connections vs Current",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "pg_settings_max_connections{job=\"postgres-exporter\"}", "legendFormat": "max" },
+        { "expr": "sum(pg_stat_activity_count{job=\"postgres-exporter\"})", "legendFormat": "current" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 102,
+      "title": "Database Activity",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "id": 7,
+      "title": "Transactions (commit/rollback)",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(pg_stat_database_xact_commit{job=\"postgres-exporter\",datname=\"$database\"}[5m])", "legendFormat": "commits/s" },
+        { "expr": "rate(pg_stat_database_xact_rollback{job=\"postgres-exporter\",datname=\"$database\"}[5m])", "legendFormat": "rollbacks/s" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "id": 8,
+      "title": "Rows Operations",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(pg_stat_database_tup_inserted{job=\"postgres-exporter\",datname=\"$database\"}[5m])", "legendFormat": "inserts/s" },
+        { "expr": "rate(pg_stat_database_tup_updated{job=\"postgres-exporter\",datname=\"$database\"}[5m])", "legendFormat": "updates/s" },
+        { "expr": "rate(pg_stat_database_tup_deleted{job=\"postgres-exporter\",datname=\"$database\"}[5m])", "legendFormat": "deletes/s" },
+        { "expr": "rate(pg_stat_database_tup_fetched{job=\"postgres-exporter\",datname=\"$database\"}[5m])", "legendFormat": "fetches/s" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
+      "id": 103,
+      "title": "Storage",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 1073741824 },
+            { "color": "red", "value": 5368709120 }
+          ]}
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 29 },
+      "id": 9,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "Database Size",
+      "type": "stat",
+      "targets": [
+        { "expr": "pg_database_size_bytes{job=\"postgres-exporter\",datname=\"$database\"}", "legendFormat": "$database" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 29 },
+      "id": 10,
+      "title": "Database Size Over Time",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "pg_database_size_bytes{job=\"postgres-exporter\",datname=\"$database\"}", "legendFormat": "{{datname}}" }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "id": 104,
+      "title": "Cache & I/O",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": { "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 39 },
+      "id": 11,
+      "title": "Cache Hit Ratio Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(pg_stat_database_blks_hit{job=\"postgres-exporter\",datname=\"$database\"}[5m]) / (rate(pg_stat_database_blks_hit{job=\"postgres-exporter\",datname=\"$database\"}[5m]) + rate(pg_stat_database_blks_read{job=\"postgres-exporter\",datname=\"$database\"}[5m]))",
+          "legendFormat": "hit ratio"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "fillOpacity": 10 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 39 },
+      "id": 12,
+      "title": "Block I/O",
+      "type": "timeseries",
+      "targets": [
+        { "expr": "rate(pg_stat_database_blks_hit{job=\"postgres-exporter\",datname=\"$database\"}[5m])", "legendFormat": "cache hits/s" },
+        { "expr": "rate(pg_stat_database_blks_read{job=\"postgres-exporter\",datname=\"$database\"}[5m])", "legendFormat": "disk reads/s" }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 2,
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus"
+      },
+      {
+        "current": { "text": "follow", "value": "follow" },
+        "name": "database",
+        "type": "query",
+        "query": "label_values(pg_database_size_bytes{job=\"postgres-exporter\"}, datname)",
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "refresh": 1,
+        "regex": "/^(?!template|postgres$)/"
+      }
+    ]
+  },
+  "time": { "from": "now-3h", "to": "now" },
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "title": "PostgreSQL — Database Metrics",
+  "uid": "postgres-exporter-db"
+}
