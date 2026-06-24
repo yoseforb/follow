@@ -452,6 +452,7 @@ services:
     command:
       - --docker_only=true
       - --housekeeping_interval=15s
+      - --storage_duration=1m
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
