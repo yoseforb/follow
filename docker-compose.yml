@@ -444,6 +444,35 @@ services:
           memory: 64m
           cpus: "0.25"
 
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.1
+    profiles: [observability]
+    container_name: ${CADVISOR_CONTAINER_NAME:-follow-cadvisor}
+    restart: unless-stopped
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=15s
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
+
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.19.1
     profiles: [observability]
