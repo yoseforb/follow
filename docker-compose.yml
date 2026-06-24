@@ -23,6 +23,10 @@ services:
     image: postgres:17-alpine
     container_name: ${POSTGRES_CONTAINER_NAME:-follow-postgres}
     restart: unless-stopped
+    command:
+        - postgres
+        - -c
+        - log_min_duration_statement=500
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
