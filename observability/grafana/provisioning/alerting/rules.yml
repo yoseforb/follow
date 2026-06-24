@@ -1,0 +1,776 @@
+apiVersion: 1
+
+groups:
+  # ── Host Alerts (node-exporter) ──────────────────────────────────
+  - orgId: 1
+    name: host-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: host-cpu-high
+        title: Host CPU above 85%
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU usage has been above 85% for 5 minutes"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: 1 - avg(rate(node_cpu_seconds_total{mode="idle",job="node-exporter"}[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.85]
+
+      - uid: host-memory-high
+        title: Host memory above 85%
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory usage has been above 85% for 5 minutes"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: 1 - (node_memory_MemAvailable_bytes{job="node-exporter"} / node_memory_MemTotal_bytes{job="node-exporter"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.85]
+
+      - uid: host-disk-warning
+        title: Disk usage above 80%
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Root filesystem usage above 80%"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: 1 - (node_filesystem_avail_bytes{mountpoint="/",job="node-exporter"} / node_filesystem_size_bytes{mountpoint="/",job="node-exporter"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.80]
+
+      - uid: host-disk-critical
+        title: Disk usage above 90% — action needed
+        noDataState: OK
+        condition: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Root filesystem usage above 90% — running out of disk space"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: 1 - (node_filesystem_avail_bytes{mountpoint="/",job="node-exporter"} / node_filesystem_size_bytes{mountpoint="/",job="node-exporter"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.90]
+
+      - uid: host-load-high
+        title: Host load average above 4
+        noDataState: OK
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "1-minute load average above 4 for 10 minutes"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: node_load1{job="node-exporter"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [4]
+
+  # ── Service Down Alerts (cAdvisor container_last_seen) ───────────
+  #
+  # container_last_seen is a gauge recording when cAdvisor last observed
+  # the container. time() - container_last_seen measures seconds since
+  # last seen. When running it's ~0, when stopped it grows past the
+  # threshold. No NoData tricks, no false positives on Grafana restart.
+  #
+  - orgId: 1
+    name: service-down-alerts
+    folder: Services
+    interval: 10s
+    rules:
+      - uid: api-down
+        title: Follow API is down
+        noDataState: OK
+        condition: C
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Follow API container is not running — users cannot access the platform"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max by (name) (time() - container_last_seen{name="follow-api",id=~"/system.slice/docker-.*",job="cadvisor"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+
+      - uid: gateway-down
+        title: Image Gateway is down
+        noDataState: OK
+        condition: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Image Gateway container is not running — image uploads will fail"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max by (name) (time() - container_last_seen{name="follow-image-gateway",id=~"/system.slice/docker-.*",job="cadvisor"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+
+      - uid: postgres-down
+        title: PostgreSQL is down
+        noDataState: OK
+        condition: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL container is not running — all database operations will fail"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max by (name) (time() - container_last_seen{name="follow-postgres",id=~"/system.slice/docker-.*",job="cadvisor"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+
+      - uid: minio-down
+        title: MinIO is down
+        noDataState: OK
+        condition: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO container is not running — image storage and downloads will fail"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max by (name) (time() - container_last_seen{name="follow-minio",id=~"/system.slice/docker-.*",job="cadvisor"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+
+      - uid: valkey-down
+        title: Valkey is down
+        noDataState: OK
+        condition: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Valkey container is not running — messaging between API and Gateway will fail"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max by (name) (time() - container_last_seen{name="follow-valkey",id=~"/system.slice/docker-.*",job="cadvisor"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+
+  # ── Container Health Alerts ──────────────────────────────────────
+  - orgId: 1
+    name: container-health-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: container-memory-near-limit
+        title: Container memory near limit
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.name }} is using above 90% of its memory limit"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: >-
+                max by (name) (
+                  container_memory_working_set_bytes{name=~"follow-.+",id=~"/system.slice/docker-.*",job="cadvisor"}
+                  / (container_spec_memory_limit_bytes{name=~"follow-.+",id=~"/system.slice/docker-.*",job="cadvisor"} > 0)
+                )
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.90]
+
+      - uid: container-restart-loop
+        title: Container restart loop
+        noDataState: OK
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.name }} has restarted 2+ times in 10 minutes — possible crash loop"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max by (name) (changes(container_start_time_seconds{name=~"follow-.+",id=~"/system.slice/docker-.*",job="cadvisor"}[10m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+
+  # ── PostgreSQL Alerts ────────────────────────────────────────────
+  - orgId: 1
+    name: postgres-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: pg-connections-high
+        title: PostgreSQL connections above 80%
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections above 80% of max_connections"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(pg_stat_activity_count{job="postgres-exporter"}) / pg_settings_max_connections{job="postgres-exporter"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.80]
+
+      - uid: pg-cache-hit-low
+        title: PostgreSQL cache hit ratio below 90%
+        noDataState: OK
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cache hit ratio below 90% — PostgreSQL may need more memory"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: pg_stat_database_blks_hit{job="postgres-exporter",datname="follow"} / (pg_stat_database_blks_hit{job="postgres-exporter",datname="follow"} + pg_stat_database_blks_read{job="postgres-exporter",datname="follow"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [0.90]
+
+  # ── Follow API Alerts ───────────────────────────────────────────
+  - orgId: 1
+    name: follow-api-alerts
+    folder: Application
+    interval: 1m
+    rules:
+      - uid: api-5xx-rate-high
+        title: Follow API error rate above 5%
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "5xx error rate above 5% for 5 minutes — users are seeing errors"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_api_http_requests_total{status_code=~"5.."}[5m])) / sum(rate(follow_api_http_requests_total[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]
+
+      - uid: api-latency-high
+        title: Follow API p95 latency above 2s
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 response time above 2 seconds — users experiencing slow responses"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: histogram_quantile(0.95, sum(rate(follow_api_http_request_duration_seconds_bucket[5m])) by (le))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [2]
+
+      - uid: api-eventbus-poison
+        title: Follow API poison queue active
+        noDataState: OK
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Events are landing in the poison queue — event handlers are failing"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_api_eventbus_poison_queue_total[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: api-auth-failures-spike
+        title: Follow API auth failures above 1/sec
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sustained auth token failures — possible brute force or misconfiguration"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_api_auth_token_failures_total[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+
+      - uid: api-email-failures
+        title: Follow API email delivery failing
+        noDataState: OK
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Email delivery failures — check SMTP/Resend configuration"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_api_email_sent_total{status="error"}[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: api-valkey-consumer-errors
+        title: Follow API Valkey consumer errors
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Valkey consumer processing errors — image results may be lost"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_api_valkey_consumer_messages_processed_total{result="error"}[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: api-scheduler-failures
+        title: Follow API scheduler job failing
+        noDataState: OK
+        condition: C
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Background job failures — cleanup or maintenance tasks may not be running"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_api_scheduler_job_runs_total{status="error"}[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: api-db-pool-exhausted
+        title: Follow API DB pool above 80%
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool above 80% — requests may start queuing"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: follow_api_db_pool_acquired_connections / follow_api_db_pool_max_connections
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.80]
+
+  # ── Follow Image Gateway Alerts ─────────────────────────────────
+  - orgId: 1
+    name: follow-gateway-alerts
+    folder: Application
+    interval: 1m
+    rules:
+      - uid: gateway-5xx-rate-high
+        title: Gateway error rate above 5%
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Image Gateway 5xx error rate above 5% — uploads are failing"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_gateway_http_requests_total{status_code=~"5.."}[5m])) / sum(rate(follow_gateway_http_requests_total[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.05]
+
+      - uid: gateway-pipeline-queue-deep
+        title: Gateway pipeline backing up
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pipeline queue depth above 8 — image processing is falling behind"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: follow_gateway_pipeline_queue_depth
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [8]
+
+      - uid: gateway-pipeline-rejections
+        title: Gateway rejecting uploads
+        noDataState: OK
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pipeline is full — new image uploads are being rejected"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: rate(follow_gateway_pipeline_full_rejections_total[5m])
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: gateway-auth-failures-spike
+        title: Gateway auth failures above 1/sec
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sustained gateway auth failures — possible attack or Ed25519 key mismatch"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_gateway_auth_token_failures_total[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+
+      - uid: gateway-stage-errors
+        title: Gateway pipeline stage errors
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pipeline processing errors above 0.5/sec — images may not be processed correctly"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_gateway_pipeline_stage_errors_total[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.5]
+
+      - uid: gateway-storage-upload-failures
+        title: Gateway MinIO uploads failing
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO upload failures — processed images are not being stored"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(follow_gateway_storage_upload_duration_seconds_count{status="error"}[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]

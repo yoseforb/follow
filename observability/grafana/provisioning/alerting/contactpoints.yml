@@ -1,0 +1,12 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: follow-email
+    receivers:
+      - uid: follow-email-receiver
+        type: email
+        sendResolved: true
+        settings:
+          addresses: yoseforb@gmail.com
+          singleEmail: true
