@@ -471,7 +471,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128m
+          memory: 256m
           cpus: "0.25"
 
   postgres-exporter:
