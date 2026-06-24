@@ -1,0 +1,333 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Service Status",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]},
+          "noValue": "DOWN"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "Follow API",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "time() - max(container_start_time_seconds{name=\"follow-api\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "legendFormat": "uptime"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]},
+          "noValue": "DOWN"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 1 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "Image Gateway",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "time() - max(container_start_time_seconds{name=\"follow-image-gateway\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "legendFormat": "uptime"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]},
+          "noValue": "DOWN"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "PostgreSQL",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "time() - max(container_start_time_seconds{name=\"follow-postgres\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "legendFormat": "uptime"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]},
+          "noValue": "DOWN"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "MinIO",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "time() - max(container_start_time_seconds{name=\"follow-minio\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "legendFormat": "uptime"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]},
+          "noValue": "DOWN"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 12, "y": 1 },
+      "id": 5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "Valkey",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "time() - max(container_start_time_seconds{name=\"follow-valkey\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "legendFormat": "uptime"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]},
+          "noValue": "DOWN"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 15, "y": 1 },
+      "id": 6,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "Grafana",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "time() - max(container_start_time_seconds{name=\"follow-grafana\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "legendFormat": "uptime"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]},
+          "noValue": "DOWN"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 18, "y": 1 },
+      "id": 7,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "Prometheus",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "time() - max(container_start_time_seconds{name=\"follow-prometheus\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "legendFormat": "uptime"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 0 }
+          ]},
+          "noValue": "DOWN"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 21, "y": 1 },
+      "id": 8,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "Loki",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "time() - max(container_start_time_seconds{name=\"follow-loki\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "legendFormat": "uptime"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "Availability Timeline",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 1 }
+          ]},
+          "custom": {
+            "fillOpacity": 100,
+            "lineWidth": 0
+          },
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ]
+        }
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "id": 9,
+      "title": "Container Up/Down History",
+      "type": "state-timeline",
+      "options": {
+        "showValue": "never",
+        "mergeValues": true,
+        "alignValue": "left",
+        "rowHeight": 0.8
+      },
+      "targets": [
+        {
+          "expr": "max by (name) (container_memory_working_set_bytes{name=~\"follow-(api|image-gateway|postgres|minio|valkey|grafana|prometheus|loki)\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"} * 0 + 1)",
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 102,
+      "title": "Resource Summary",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 536870912 },
+            { "color": "red", "value": 1073741824 }
+          ]}
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "id": 10,
+      "title": "Memory Usage per Container",
+      "type": "bargauge",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "displayMode": "gradient" },
+      "targets": [
+        {
+          "expr": "max by (name) (container_memory_working_set_bytes{name=~\"follow-.+\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 0.5 },
+            { "color": "red", "value": 0.8 }
+          ]}
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "id": 11,
+      "title": "CPU Usage per Container",
+      "type": "bargauge",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "displayMode": "gradient" },
+      "targets": [
+        {
+          "expr": "max by (name) (rate(container_cpu_usage_seconds_total{name=~\"follow-.+\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"}[5m]))",
+          "legendFormat": "{{name}}"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 2,
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "title": "Service Status",
+  "uid": "service-status-overview"
+}
