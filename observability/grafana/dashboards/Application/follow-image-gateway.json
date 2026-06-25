@@ -547,7 +547,7 @@
     }
   ],
   "schemaVersion": 39,
-  "tags": ["follow-image-gateway", "observability"],
+  "tags": ["follow-image-gateway"],
   "templating": {
     "list": [
       {

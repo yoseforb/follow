@@ -328,7 +328,7 @@
   "time": { "from": "now-6h", "to": "now" },
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["status", "observability"],
+  "tags": ["status"],
   "title": "Service Status",
   "uid": "service-status-overview"
 }

@@ -405,7 +405,7 @@
     }
   ],
   "schemaVersion": 39,
-  "tags": ["valkey", "observability"],
+  "tags": ["valkey"],
   "templating": {
     "list": [
       {

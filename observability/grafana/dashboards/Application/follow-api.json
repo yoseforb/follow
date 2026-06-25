@@ -501,7 +501,7 @@
     }
   ],
   "schemaVersion": 39,
-  "tags": ["follow-api", "observability"],
+  "tags": ["follow-api"],
   "templating": {
     "list": [
       {

@@ -317,7 +317,7 @@
     }
   ],
   "schemaVersion": 39,
-  "tags": ["minio", "observability"],
+  "tags": ["minio"],
   "templating": {
     "list": [
       {

@@ -289,7 +289,7 @@
   "time": { "from": "now-3h", "to": "now" },
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["host", "observability"],
+  "tags": ["host"],
   "title": "Node Exporter — Host Metrics",
   "uid": "node-exporter-host"
 }
