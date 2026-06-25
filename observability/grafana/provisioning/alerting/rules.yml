@@ -1278,3 +1278,87 @@ groups:
                 - evaluator:
                     type: gt
                     params: [100]
+
+  # ── Log-Based Alerts (Loki) ─────────────────────────────────────
+  - orgId: 1
+    name: log-alerts
+    folder: Application
+    interval: 1m
+    rules:
+      - uid: log-panic-fatal
+        title: Panic or fatal log detected
+        noDataState: OK
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Panic or fatal log detected in {{ $labels.container }} — service may have crashed"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: P8E80F9AEF21F6940
+            model:
+              expr: sum by (container) (count_over_time({container=~"follow-api|follow-image-gateway"} | json | level=~"fatal|panic" [5m]))
+              instant: false
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: log-error-rate-high
+        title: Error log rate above 5/min
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.container }} logging more than 5 errors per minute — investigate root cause"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: P8E80F9AEF21F6940
+            model:
+              expr: sum by (container) (count_over_time({container=~"follow-api|follow-image-gateway"} | json | level="error" [1m]))
+              instant: false
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]
+
+      - uid: log-error-rate-critical
+        title: Error log rate above 30/min
+        noDataState: OK
+        condition: C
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.container }} logging more than 30 errors per minute — likely outage"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: P8E80F9AEF21F6940
+            model:
+              expr: sum by (container) (count_over_time({container=~"follow-api|follow-image-gateway"} | json | level="error" [1m]))
+              instant: false
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [30]
