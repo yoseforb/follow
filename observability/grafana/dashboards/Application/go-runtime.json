@@ -1,0 +1,322 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Goroutines",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 200 },
+              { "color": "red", "value": 500 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "go_goroutines{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "title": "Current Goroutines",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 6, "w": 10, "x": 6, "y": 1 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "go_goroutines{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "title": "Goroutines Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 1 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "go_threads{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "title": "OS Threads",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "id": 101,
+      "title": "Heap Memory",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 268435456 },
+              { "color": "red", "value": 536870912 }
+            ]
+          },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 8 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "go_memstats_heap_inuse_bytes{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "title": "Heap In Use",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "none" } },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 6, "w": 10, "x": 6, "y": 8 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "go_memstats_heap_inuse_bytes{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}} in-use"
+        },
+        {
+          "expr": "go_memstats_heap_idle_bytes{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}} idle"
+        }
+      ],
+      "title": "Heap Breakdown",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 8 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "go_memstats_stack_inuse_bytes{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}} stack"
+        },
+        {
+          "expr": "go_memstats_sys_bytes{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}} sys"
+        }
+      ],
+      "title": "Stack & System Memory",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "Garbage Collection",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ops"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 15 },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "rate(go_gc_duration_seconds_count{job=~\"follow-api|follow-image-gateway\"}[5m])",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "title": "GC Runs / sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 15 },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "go_gc_duration_seconds{job=~\"follow-api|follow-image-gateway\",quantile=\"0.75\"}",
+          "legendFormat": "{{job}} p75"
+        },
+        {
+          "expr": "go_gc_duration_seconds{job=~\"follow-api|follow-image-gateway\",quantile=\"1\"}",
+          "legendFormat": "{{job}} max"
+        }
+      ],
+      "title": "GC Pause Duration (p75 / max)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "decbytes"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 15 },
+      "id": 9,
+      "targets": [
+        {
+          "expr": "go_memstats_next_gc_bytes{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}} next GC target"
+        },
+        {
+          "expr": "go_memstats_heap_alloc_bytes{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}} heap alloc"
+        }
+      ],
+      "title": "Heap Alloc vs Next GC Target",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "id": 103,
+      "title": "Allocations",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "Bps"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 22 },
+      "id": 10,
+      "targets": [
+        {
+          "expr": "rate(go_memstats_alloc_bytes_total{job=~\"follow-api|follow-image-gateway\"}[5m])",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "title": "Allocation Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "unit": "ops"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 22 },
+      "id": 11,
+      "targets": [
+        {
+          "expr": "rate(go_memstats_mallocs_total{job=~\"follow-api|follow-image-gateway\"}[5m])",
+          "legendFormat": "{{job}} mallocs"
+        },
+        {
+          "expr": "rate(go_memstats_frees_total{job=~\"follow-api|follow-image-gateway\"}[5m])",
+          "legendFormat": "{{job}} frees"
+        }
+      ],
+      "title": "Mallocs & Frees / sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 22 },
+      "id": 12,
+      "targets": [
+        {
+          "expr": "go_memstats_heap_objects{job=~\"follow-api|follow-image-gateway\"}",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "title": "Live Heap Objects",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 41,
+  "tags": ["go-runtime"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-3h", "to": "now" },
+  "title": "Go Runtime",
+  "uid": "go-runtime-overview"
+}
