@@ -1,0 +1,427 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 1 }
+          ]}
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "Valkey Up",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "redis_up{job=\"valkey-exporter\"}",
+          "legendFormat": "up"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "dtdurations" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "textMode": "value" },
+      "title": "Uptime",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "redis_uptime_in_seconds{job=\"valkey-exporter\"}",
+          "legendFormat": "uptime"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "textMode": "value" },
+      "title": "Connected Clients",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "redis_connected_clients{job=\"valkey-exporter\"}",
+          "legendFormat": "clients"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "decimals": 1 }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "textMode": "value" },
+      "title": "Commands / sec",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(redis_commands_processed_total{job=\"valkey-exporter\"}[5m])",
+          "legendFormat": "ops"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "decimals": 1 }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "id": 5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "textMode": "value" },
+      "title": "Hit Rate",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(redis_keyspace_hits_total{job=\"valkey-exporter\"}[5m]) / (rate(redis_keyspace_hits_total{job=\"valkey-exporter\"}[5m]) + rate(redis_keyspace_misses_total{job=\"valkey-exporter\"}[5m]))",
+          "legendFormat": "hit rate"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 2 }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "id": 6,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "textMode": "value" },
+      "title": "Fragmentation Ratio",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "redis_mem_fragmentation_ratio{job=\"valkey-exporter\"}",
+          "legendFormat": "ratio"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "Memory",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 7,
+      "title": "Memory Usage",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "redis_memory_used_bytes{job=\"valkey-exporter\"}",
+          "legendFormat": "Used"
+        },
+        {
+          "expr": "redis_memory_max_bytes{job=\"valkey-exporter\"} > 0",
+          "legendFormat": "Max"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 8,
+      "title": "Fragmentation Ratio Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "redis_mem_fragmentation_ratio{job=\"valkey-exporter\"}",
+          "legendFormat": "Fragmentation"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "Throughput",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 1,
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "id": 9,
+      "title": "Commands / sec",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(redis_commands_processed_total{job=\"valkey-exporter\"}[5m])",
+          "legendFormat": "Commands/sec"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 1,
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "id": 10,
+      "title": "Connections / sec",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(redis_connections_received_total{job=\"valkey-exporter\"}[5m])",
+          "legendFormat": "Received"
+        },
+        {
+          "expr": "rate(redis_rejected_connections_total{job=\"valkey-exporter\"}[5m])",
+          "legendFormat": "Rejected"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 103,
+      "title": "Keyspace",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 1,
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 11,
+      "title": "Hits vs Misses / sec",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(redis_keyspace_hits_total{job=\"valkey-exporter\"}[5m])",
+          "legendFormat": "Hits"
+        },
+        {
+          "expr": "rate(redis_keyspace_misses_total{job=\"valkey-exporter\"}[5m])",
+          "legendFormat": "Misses"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 12,
+      "title": "Total Keys",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "redis_db_keys{job=\"valkey-exporter\"}",
+          "legendFormat": "{{ db }}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 104,
+      "title": "Streams",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
+      "id": 13,
+      "title": "Stream Length",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "redis_stream_length{job=\"valkey-exporter\"}",
+          "legendFormat": "{{ stream }}"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
+      "id": 14,
+      "title": "Consumer Group Pending (PEL)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "redis_stream_group_messages_pending{job=\"valkey-exporter\"}",
+          "legendFormat": "{{ stream }} / {{ group }}"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "id": 15,
+      "title": "Consumer Group Lag",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "redis_stream_group_lag{job=\"valkey-exporter\"}",
+          "legendFormat": "{{ stream }} / {{ group }}"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "id": 16,
+      "title": "Consumer Idle Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "redis_stream_group_consumer_idle_seconds{job=\"valkey-exporter\"}",
+          "legendFormat": "{{ stream }} / {{ group }} / {{ consumer }}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 },
+      "id": 105,
+      "title": "Slow Log & Evictions",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 50 },
+      "id": 17,
+      "title": "Slow Log Length",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "redis_slowlog_length{job=\"valkey-exporter\"}",
+          "legendFormat": "Slow log entries"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 1,
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 50 },
+      "id": 18,
+      "title": "Evicted & Expired Keys / sec",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(redis_evicted_keys_total{job=\"valkey-exporter\"}[5m])",
+          "legendFormat": "Evicted"
+        },
+        {
+          "expr": "rate(redis_expired_keys_total{job=\"valkey-exporter\"}[5m])",
+          "legendFormat": "Expired"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["valkey", "observability"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "type": "datasource"
+      }
+    ]
+  },
+  "refresh": "30s",
+  "time": { "from": "now-3h", "to": "now" },
+  "title": "Valkey",
+  "uid": "valkey-overview",
+  "version": 1
+}

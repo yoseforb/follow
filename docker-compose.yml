@@ -474,6 +474,31 @@ services:
           memory: 256m
           cpus: "0.25"
 
+  valkey-exporter:
+    image: oliver006/redis_exporter:v1.86.0
+    profiles: [observability]
+    container_name: ${VALKEY_EXPORTER_CONTAINER_NAME:-follow-valkey-exporter}
+    restart: unless-stopped
+    depends_on:
+      valkey:
+        condition: service_healthy
+    environment:
+      REDIS_ADDR: "redis://valkey:6379"
+      REDIS_EXPORTER_CHECK_STREAMS: "image:*"
+      REDIS_EXPORTER_INCL_SYSTEM_METRICS: "true"
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.25"
+
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.19.1
     profiles: [observability]

@@ -21,6 +21,10 @@ scrape_configs:
     static_configs:
       - targets: ["cadvisor:8080"]
 
+  - job_name: valkey-exporter
+    static_configs:
+      - targets: ["valkey-exporter:9121"]
+
   - job_name: postgres-exporter
     static_configs:
       - targets: ["postgres-exporter:9187"]
