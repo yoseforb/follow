@@ -1362,3 +1362,61 @@ groups:
                 - evaluator:
                     type: gt
                     params: [30]
+
+  # ── Backup Alerts (Loki) ────────────────────────────────────────
+  - orgId: 1
+    name: backup-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: backup-not-completed
+        title: Daily backup did not complete
+        noDataState: Alerting
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful backup in the last 25 hours — data protection at risk"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 90000, to: 0 }
+            datasourceUid: P8E80F9AEF21F6940
+            model:
+              expr: count_over_time({container="follow-backup-1"} |= "backup: complete" [25h])
+              instant: false
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
+      - uid: backup-error
+        title: Backup error detected
+        noDataState: OK
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backup process logged an error — backup may be incomplete"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: P8E80F9AEF21F6940
+            model:
+              expr: count_over_time({container="follow-backup-1"} |~ "error|failed|fatal" [1h])
+              instant: false
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
