@@ -1383,7 +1383,8 @@ groups:
             relativeTimeRange: { from: 90000, to: 0 }
             datasourceUid: P8E80F9AEF21F6940
             model:
-              expr: count_over_time({container="follow-backup-1"} |= "backup: complete" [25h])
+              expr: >-
+                count_over_time({container="follow-backup-1"} |= "backup: complete" [25h])
               instant: false
           - refId: C
             datasourceUid: __expr__
@@ -1409,7 +1410,8 @@ groups:
             relativeTimeRange: { from: 3600, to: 0 }
             datasourceUid: P8E80F9AEF21F6940
             model:
-              expr: count_over_time({container="follow-backup-1"} |~ "error|failed|fatal" [1h])
+              expr: >-
+                count_over_time({container="follow-backup-1"} |~ "error|failed|fatal" [1h])
               instant: false
           - refId: C
             datasourceUid: __expr__
