@@ -1026,3 +1026,139 @@ groups:
                 - evaluator:
                     type: lt
                     params: [1]
+
+  # ── Valkey Alerts ────────────────────────────────────────────────
+  - orgId: 1
+    name: valkey-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: valkey-memory-high
+        title: Valkey memory usage above 80%
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Valkey memory usage above 80% of maxmemory — risk of evictions or OOM"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: redis_memory_used_bytes{job="valkey-exporter"} / redis_memory_max_bytes{job="valkey-exporter"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.80]
+
+      - uid: valkey-consumer-lag-high
+        title: Valkey stream consumer lag growing
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Valkey stream consumer group lag above 10 — image results backing up"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max(redis_stream_group_lag{job="valkey-exporter"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [10]
+
+      - uid: valkey-evictions-active
+        title: Valkey evicting keys
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Valkey is evicting keys — data loss in progress, increase maxmemory"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: rate(redis_evicted_keys_total{job="valkey-exporter"}[5m])
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: valkey-rejected-connections
+        title: Valkey rejecting connections
+        noDataState: OK
+        condition: C
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Valkey is rejecting connections — maxclients limit reached"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: rate(redis_rejected_connections_total{job="valkey-exporter"}[5m])
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
+      - uid: valkey-fragmentation-high
+        title: Valkey memory fragmentation above 1.5
+        noDataState: OK
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Valkey fragmentation ratio above 1.5 — wasting memory, consider restart"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: redis_mem_fragmentation_ratio{job="valkey-exporter"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1.5]
