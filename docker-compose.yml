@@ -540,6 +540,8 @@ services:
       - GF_SMTP_USER=${SMTP_USERNAME:-resend}
       - GF_SMTP_PASSWORD=${SMTP_PASSWORD}
       - GF_SMTP_FROM_ADDRESS=alerts@send.follow-nav.com
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro

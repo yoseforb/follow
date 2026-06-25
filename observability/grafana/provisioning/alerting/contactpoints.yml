@@ -12,3 +12,13 @@ contactPoints:
           singleEmail: true
           subject: '{{ template "follow.subject" . }}'
           message: '{{ template "follow.message" . }}'
+
+  - orgId: 1
+    name: follow-telegram
+    receivers:
+      - uid: follow-telegram-receiver
+        type: telegram
+        sendResolved: true
+        settings:
+          chatid: "1257313394"
+          bottoken: $__env{TELEGRAM_BOT_TOKEN}
