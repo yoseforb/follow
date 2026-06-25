@@ -1,0 +1,339 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "green", "value": 1 }
+          ]}
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "title": "MinIO Up",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "minio_cluster_health_drives_online_count{job=\"minio\"}",
+          "legendFormat": "online drives"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "textMode": "value" },
+      "title": "Total Objects",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "minio_cluster_usage_objects_count{job=\"minio\"}",
+          "legendFormat": "objects"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "textMode": "value" },
+      "title": "Total Storage Used",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "minio_cluster_usage_objects_total_bytes{job=\"minio\"}",
+          "legendFormat": "used"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "textMode": "value" },
+      "title": "Buckets",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "minio_cluster_usage_objects_buckets_count{job=\"minio\"}",
+          "legendFormat": "buckets"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "id": 5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "none", "textMode": "value" },
+      "title": "Disk Free",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "minio_system_drive_free_bytes{job=\"minio\"}",
+          "legendFormat": "free"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 0.8 },
+            { "color": "red", "value": 0.9 }
+          ]}
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "id": 6,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "textMode": "value" },
+      "title": "Disk Usage %",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "minio_system_drive_used_bytes{job=\"minio\"} / minio_system_drive_total_bytes{job=\"minio\"}",
+          "legendFormat": "usage"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "S3 Requests",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 1,
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 7,
+      "title": "S3 Requests / sec",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(minio_api_requests_total{job=\"minio\"}[5m]))",
+          "legendFormat": "{{ name }}"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 1,
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 8,
+      "title": "S3 Errors / sec",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(minio_api_requests_4xx_errors_total{job=\"minio\"}[5m])",
+          "legendFormat": "4xx"
+        },
+        {
+          "expr": "rate(minio_api_requests_5xx_errors_total{job=\"minio\"}[5m])",
+          "legendFormat": "5xx"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "Traffic",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "id": 9,
+      "title": "Traffic Sent",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(minio_api_requests_traffic_sent_bytes{job=\"minio\"}[5m])",
+          "legendFormat": "Sent"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "id": 10,
+      "title": "Traffic Received",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(minio_api_requests_traffic_received_bytes{job=\"minio\"}[5m])",
+          "legendFormat": "Received"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 103,
+      "title": "Storage",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 11,
+      "title": "Disk Usage Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "minio_system_drive_used_bytes{job=\"minio\"}",
+          "legendFormat": "Used"
+        },
+        {
+          "expr": "minio_system_drive_total_bytes{job=\"minio\"}",
+          "legendFormat": "Total"
+        },
+        {
+          "expr": "minio_system_drive_free_bytes{job=\"minio\"}",
+          "legendFormat": "Free"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 12,
+      "title": "Bucket Size",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "minio_cluster_usage_buckets_total_bytes{job=\"minio\"}",
+          "legendFormat": "{{ bucket }}"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 13,
+      "title": "Objects per Bucket",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "minio_cluster_usage_buckets_objects_count{job=\"minio\"}",
+          "legendFormat": "{{ bucket }}"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "fillOpacity": 15 }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "id": 14,
+      "title": "Total Objects Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "minio_cluster_usage_objects_count{job=\"minio\"}",
+          "legendFormat": "Total objects"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["minio", "observability"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "type": "datasource"
+      }
+    ]
+  },
+  "refresh": "30s",
+  "time": { "from": "now-3h", "to": "now" },
+  "title": "MinIO",
+  "uid": "minio-overview",
+  "version": 1
+}
