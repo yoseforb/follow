@@ -1162,3 +1162,87 @@ groups:
                 - evaluator:
                     type: gt
                     params: [1.5]
+
+  # ── Go Runtime Alerts (application services) ────────────────────
+  - orgId: 1
+    name: go-runtime-alerts
+    folder: Application
+    interval: 1m
+    rules:
+      - uid: go-goroutine-leak
+        title: Goroutine count abnormally high
+        noDataState: OK
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} goroutine count above 500 for 10 minutes — possible goroutine leak"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: go_goroutines{job=~"follow-api|follow-image-gateway"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [500]
+
+      - uid: go-heap-growing
+        title: Go heap usage above 512MB
+        noDataState: OK
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} heap usage above 512MB — possible memory leak"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: go_memstats_heap_inuse_bytes{job=~"follow-api|follow-image-gateway"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [536870912]
+
+      - uid: go-gc-pressure-high
+        title: Go GC running too frequently
+        noDataState: OK
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} GC running more than 10 times/sec — high memory allocation pressure"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: rate(go_gc_duration_seconds_count{job=~"follow-api|follow-image-gateway"}[5m])
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [10]
