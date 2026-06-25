@@ -1371,7 +1371,7 @@ groups:
     rules:
       - uid: backup-not-completed
         title: Daily backup did not complete
-        noDataState: Alerting
+        noDataState: OK
         condition: C
         for: 0s
         labels:
