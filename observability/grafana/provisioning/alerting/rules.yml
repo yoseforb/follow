@@ -279,6 +279,38 @@ groups:
                     type: gt
                     params: [60]
 
+  # ── Container Alerts ─────────────────────────────────────────────
+  - orgId: 1
+    name: container-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: container-restart
+        title: Container restarting
+        noDataState: OK
+        condition: C
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} has restarted"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: increase(container_start_time_seconds{name=~"follow-.+",id=~"/system.slice/docker-.*",job="cadvisor"}[5m]) > 0
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+
   # ── Container Health Alerts ──────────────────────────────────────
   - orgId: 1
     name: container-health-alerts
@@ -398,6 +430,38 @@ groups:
                 - evaluator:
                     type: lt
                     params: [0.90]
+
+  # ── Scrape Alerts ─────────────────────────────────────────────────
+  - orgId: 1
+    name: scrape-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: scrape-target-down
+        title: Prometheus scrape target down
+        noDataState: Alerting
+        condition: C
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.job }}"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: up
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
 
   # ── Follow API Alerts ───────────────────────────────────────────
   - orgId: 1
