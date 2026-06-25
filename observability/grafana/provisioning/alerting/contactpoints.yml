@@ -10,3 +10,5 @@ contactPoints:
         settings:
           addresses: yoseforb@gmail.com
           singleEmail: true
+          subject: '{{ template "follow.subject" . }}'
+          message: '{{ template "follow.message" . }}'

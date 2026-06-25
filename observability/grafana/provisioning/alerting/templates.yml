@@ -1,0 +1,32 @@
+apiVersion: 1
+
+templates:
+  - orgId: 1
+    name: follow-notifications
+    template: |
+      {{ define "follow.subject" -}}
+        {{- if eq .Status "firing" -}}
+          [FIRING:{{ .Alerts.Firing | len }}]
+        {{- else -}}
+          [RESOLVED]
+        {{- end }} {{ .GroupLabels.alertname }}
+        {{- if .CommonLabels.severity }} ({{ .CommonLabels.severity }}){{ end -}}
+      {{- end }}
+
+      {{ define "follow.message" -}}
+      {{ if .Alerts.Firing -}}
+      FIRING:
+      {{ range .Alerts.Firing }}
+      * {{ .Labels.alertname }}{{ if .Labels.name }} — {{ .Labels.name }}{{ end }}
+        {{ if .Annotations.summary }}{{ .Annotations.summary }}{{ end }}
+        Severity: {{ .Labels.severity }}
+      {{ end }}
+      {{ end -}}
+      {{ if .Alerts.Resolved -}}
+      RESOLVED:
+      {{ range .Alerts.Resolved }}
+      * {{ .Labels.alertname }}{{ if .Labels.name }} — {{ .Labels.name }}{{ end }}
+        {{ if .Annotations.summary }}{{ .Annotations.summary }}{{ end }}
+      {{ end }}
+      {{ end -}}
+      {{- end }}
