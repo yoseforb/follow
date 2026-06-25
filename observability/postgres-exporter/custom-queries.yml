@@ -51,3 +51,362 @@ follow_images:
     - count:
         usage: "GAUGE"
         description: "Number of images by upload status"
+
+follow_user_auth_methods:
+  query: |
+    SELECT provider, count(*) AS count
+    FROM "user".auth_methods
+    GROUP BY provider
+  metrics:
+    - provider:
+        usage: "LABEL"
+        description: "Authentication provider"
+    - count:
+        usage: "GAUGE"
+        description: "Number of users by auth provider"
+
+follow_user_registration_stats:
+  query: |
+    SELECT
+      COALESCE(EXTRACT(EPOCH FROM avg(registered_at - created_at))
+        FILTER (WHERE user_type = 'registered' AND registered_at IS NOT NULL), 0)::float
+        AS avg_registration_seconds,
+      COALESCE(count(*) FILTER (WHERE user_type = 'registered'), 0) AS registered_count,
+      count(*) AS total_count
+    FROM "user".users
+  metrics:
+    - avg_registration_seconds:
+        usage: "GAUGE"
+        description: "Average seconds from creation to registration"
+    - registered_count:
+        usage: "GAUGE"
+        description: "Total registered users"
+    - total_count:
+        usage: "GAUGE"
+        description: "Total users"
+
+follow_user_multi_auth:
+  query: |
+    SELECT COALESCE(count(*), 0) AS count
+    FROM (
+      SELECT user_id
+      FROM "user".auth_methods
+      GROUP BY user_id
+      HAVING count(*) > 1
+    ) multi
+  metrics:
+    - count:
+        usage: "GAUGE"
+        description: "Users with multiple auth methods"
+
+follow_user_blacklisted:
+  query: |
+    SELECT count(*) AS count
+    FROM "user".blacklisted_users
+    WHERE expires_at > now()
+  metrics:
+    - count:
+        usage: "GAUGE"
+        description: "Currently blacklisted users"
+
+follow_route_waypoint_stats:
+  query: |
+    SELECT
+      COALESCE(avg(total_waypoints), 0)::float AS avg_waypoints,
+      COALESCE(min(total_waypoints), 0) AS min_waypoints,
+      COALESCE(max(total_waypoints), 0) AS max_waypoints
+    FROM route.routes
+    WHERE deleted_at IS NULL AND total_waypoints > 0
+  metrics:
+    - avg_waypoints:
+        usage: "GAUGE"
+        description: "Average waypoints per route"
+    - min_waypoints:
+        usage: "GAUGE"
+        description: "Minimum waypoints in a route"
+    - max_waypoints:
+        usage: "GAUGE"
+        description: "Maximum waypoints in a route"
+
+follow_route_waypoint_distribution:
+  query: |
+    SELECT
+      CASE
+        WHEN total_waypoints BETWEEN 1 AND 3 THEN '1-3'
+        WHEN total_waypoints BETWEEN 4 AND 7 THEN '4-7'
+        WHEN total_waypoints BETWEEN 8 AND 15 THEN '8-15'
+        WHEN total_waypoints >= 16 THEN '16+'
+      END AS bucket,
+      count(*) AS count
+    FROM route.routes
+    WHERE deleted_at IS NULL AND total_waypoints > 0
+    GROUP BY 1
+  metrics:
+    - bucket:
+        usage: "LABEL"
+        description: "Waypoint count bucket"
+    - count:
+        usage: "GAUGE"
+        description: "Routes in this bucket"
+
+follow_route_content:
+  query: |
+    SELECT
+      count(*) AS total_routes,
+      COALESCE(count(*) FILTER (WHERE description IS NOT NULL AND description != ''), 0)
+        AS with_description,
+      COALESCE(count(*) FILTER (WHERE address != ''), 0) AS with_address,
+      COALESCE(count(*) FILTER (WHERE start_point != ''), 0) AS with_start_point,
+      COALESCE(count(*) FILTER (WHERE end_point != ''), 0) AS with_end_point,
+      COALESCE(count(*) FILTER (WHERE location_name IS NOT NULL AND location_name != ''), 0)
+        AS with_location_name
+    FROM route.routes
+    WHERE deleted_at IS NULL
+  metrics:
+    - total_routes:
+        usage: "GAUGE"
+        description: "Total active routes"
+    - with_description:
+        usage: "GAUGE"
+        description: "Routes with description"
+    - with_address:
+        usage: "GAUGE"
+        description: "Routes with address"
+    - with_start_point:
+        usage: "GAUGE"
+        description: "Routes with start point"
+    - with_end_point:
+        usage: "GAUGE"
+        description: "Routes with end point"
+    - with_location_name:
+        usage: "GAUGE"
+        description: "Routes with location name"
+
+follow_route_visibility:
+  query: |
+    SELECT visibility, count(*) AS count
+    FROM route.routes
+    WHERE deleted_at IS NULL
+    GROUP BY visibility
+  metrics:
+    - visibility:
+        usage: "LABEL"
+        description: "Route visibility"
+    - count:
+        usage: "GAUGE"
+        description: "Routes by visibility"
+
+follow_route_access:
+  query: |
+    SELECT access_method, count(*) AS count
+    FROM route.routes
+    WHERE deleted_at IS NULL
+    GROUP BY access_method
+  metrics:
+    - access_method:
+        usage: "LABEL"
+        description: "Route access method"
+    - count:
+        usage: "GAUGE"
+        description: "Routes by access method"
+
+follow_route_lifecycle:
+  query: |
+    SELECT lifecycle_type, count(*) AS count
+    FROM route.routes
+    WHERE deleted_at IS NULL
+    GROUP BY lifecycle_type
+  metrics:
+    - lifecycle_type:
+        usage: "LABEL"
+        description: "Route lifecycle type"
+    - count:
+        usage: "GAUGE"
+        description: "Routes by lifecycle type"
+
+follow_route_publish_stats:
+  query: |
+    SELECT
+      COALESCE(EXTRACT(EPOCH FROM avg(updated_at - created_at))
+        FILTER (WHERE status = 'published'), 0)::float AS avg_publish_seconds,
+      COALESCE(count(*) FILTER (WHERE status IN ('preparing', 'pending')
+        AND created_at < now() - interval '24 hours'), 0) AS stuck_routes
+    FROM route.routes
+    WHERE deleted_at IS NULL
+  metrics:
+    - avg_publish_seconds:
+        usage: "GAUGE"
+        description: "Average seconds from creation to publish"
+    - stuck_routes:
+        usage: "GAUGE"
+        description: "Routes stuck in preparing/pending over 24h"
+
+follow_route_revisions:
+  query: |
+    SELECT count(*) AS count
+    FROM route.routes
+    WHERE deleted_at IS NULL AND parent_route_id IS NOT NULL
+  metrics:
+    - count:
+        usage: "GAUGE"
+        description: "Route revisions"
+
+follow_user_growth:
+  query: |
+    SELECT
+      COALESCE(count(*) FILTER (WHERE created_at >= now() - interval '24 hours'), 0) AS new_24h,
+      COALESCE(count(*) FILTER (WHERE created_at >= now() - interval '7 days'), 0) AS new_7d,
+      COALESCE(count(*) FILTER (WHERE created_at >= now() - interval '30 days'), 0) AS new_30d
+    FROM "user".users
+  metrics:
+    - new_24h:
+        usage: "GAUGE"
+        description: "New users in last 24 hours"
+    - new_7d:
+        usage: "GAUGE"
+        description: "New users in last 7 days"
+    - new_30d:
+        usage: "GAUGE"
+        description: "New users in last 30 days"
+
+follow_registration_growth:
+  query: |
+    SELECT
+      COALESCE(count(*) FILTER (WHERE registered_at >= now() - interval '24 hours'), 0) AS new_24h,
+      COALESCE(count(*) FILTER (WHERE registered_at >= now() - interval '7 days'), 0) AS new_7d,
+      COALESCE(count(*) FILTER (WHERE registered_at >= now() - interval '30 days'), 0) AS new_30d
+    FROM "user".users
+    WHERE user_type = 'registered'
+  metrics:
+    - new_24h:
+        usage: "GAUGE"
+        description: "New registrations in last 24 hours"
+    - new_7d:
+        usage: "GAUGE"
+        description: "New registrations in last 7 days"
+    - new_30d:
+        usage: "GAUGE"
+        description: "New registrations in last 30 days"
+
+follow_route_growth:
+  query: |
+    SELECT
+      COALESCE(count(*) FILTER (WHERE created_at >= now() - interval '24 hours'), 0) AS new_24h,
+      COALESCE(count(*) FILTER (WHERE created_at >= now() - interval '7 days'), 0) AS new_7d,
+      COALESCE(count(*) FILTER (WHERE created_at >= now() - interval '30 days'), 0) AS new_30d
+    FROM route.routes
+    WHERE deleted_at IS NULL
+  metrics:
+    - new_24h:
+        usage: "GAUGE"
+        description: "New routes in last 24 hours"
+    - new_7d:
+        usage: "GAUGE"
+        description: "New routes in last 7 days"
+    - new_30d:
+        usage: "GAUGE"
+        description: "New routes in last 30 days"
+
+follow_image_growth:
+  query: |
+    SELECT
+      COALESCE(count(*) FILTER (WHERE created_at >= now() - interval '24 hours'), 0) AS new_24h,
+      COALESCE(count(*) FILTER (WHERE created_at >= now() - interval '7 days'), 0) AS new_7d,
+      COALESCE(count(*) FILTER (WHERE created_at >= now() - interval '30 days'), 0) AS new_30d
+    FROM images.images
+  metrics:
+    - new_24h:
+        usage: "GAUGE"
+        description: "New images in last 24 hours"
+    - new_7d:
+        usage: "GAUGE"
+        description: "New images in last 7 days"
+    - new_30d:
+        usage: "GAUGE"
+        description: "New images in last 30 days"
+
+follow_bookmark_growth:
+  query: |
+    SELECT
+      COALESCE(count(*) FILTER (WHERE saved_at >= now() - interval '24 hours'), 0) AS new_24h,
+      COALESCE(count(*) FILTER (WHERE saved_at >= now() - interval '7 days'), 0) AS new_7d,
+      COALESCE(count(*) FILTER (WHERE saved_at >= now() - interval '30 days'), 0) AS new_30d
+    FROM route.saved_routes
+  metrics:
+    - new_24h:
+        usage: "GAUGE"
+        description: "New bookmarks in last 24 hours"
+    - new_7d:
+        usage: "GAUGE"
+        description: "New bookmarks in last 7 days"
+    - new_30d:
+        usage: "GAUGE"
+        description: "New bookmarks in last 30 days"
+
+follow_engagement_bookmarks:
+  query: |
+    SELECT
+      count(*) AS total_bookmarks,
+      count(DISTINCT route_id) AS bookmarked_routes,
+      count(DISTINCT user_id) AS users_with_bookmarks
+    FROM route.saved_routes
+  metrics:
+    - total_bookmarks:
+        usage: "GAUGE"
+        description: "Total bookmark count"
+    - bookmarked_routes:
+        usage: "GAUGE"
+        description: "Routes with at least one bookmark"
+    - users_with_bookmarks:
+        usage: "GAUGE"
+        description: "Users who have bookmarked routes"
+
+follow_engagement_routes_per_user:
+  query: |
+    SELECT
+      COALESCE(avg(route_count), 0)::float AS avg_routes_per_user,
+      COALESCE(max(route_count), 0) AS max_routes_per_user
+    FROM (
+      SELECT owner_id, count(*) AS route_count
+      FROM route.routes
+      WHERE deleted_at IS NULL
+      GROUP BY owner_id
+    ) per_user
+  metrics:
+    - avg_routes_per_user:
+        usage: "GAUGE"
+        description: "Average routes per user"
+    - max_routes_per_user:
+        usage: "GAUGE"
+        description: "Maximum routes by single user"
+
+follow_engagement_sessions:
+  query: |
+    SELECT
+      count(*) AS total_sessions,
+      count(DISTINCT user_id) AS users_with_sessions
+    FROM "user".user_sessions
+    WHERE expires_at > now()
+  metrics:
+    - total_sessions:
+        usage: "GAUGE"
+        description: "Active sessions"
+    - users_with_sessions:
+        usage: "GAUGE"
+        description: "Users with active sessions"
+
+follow_b2b_metrics:
+  query: |
+    SELECT
+      COALESCE(count(*) FILTER (WHERE visibility = 'public' AND status = 'published'), 0)
+        AS public_published_routes,
+      COALESCE(count(*) FILTER (WHERE owner_type = 'group'), 0) AS group_owned_routes
+    FROM route.routes
+    WHERE deleted_at IS NULL
+  metrics:
+    - public_published_routes:
+        usage: "GAUGE"
+        description: "Publicly published routes"
+    - group_owned_routes:
+        usage: "GAUGE"
+        description: "Group-owned routes"

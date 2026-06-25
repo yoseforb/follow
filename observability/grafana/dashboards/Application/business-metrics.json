@@ -130,6 +130,125 @@
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 105,
+      "title": "User Funnel & Conversion",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "yellow", "value": 10 },
+            { "color": "green", "value": 30 }
+          ] },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 7 },
+      "id": 20,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_user_registration_stats_registered_count{job=\"postgres-exporter\"} / follow_user_registration_stats_total_count{job=\"postgres-exporter\"} * 100",
+          "legendFormat": "conversion"
+        }
+      ],
+      "title": "Registration Conversion",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "h"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 7 },
+      "id": 21,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_user_registration_stats_avg_registration_seconds{job=\"postgres-exporter\"} / 3600",
+          "legendFormat": "avg hours"
+        }
+      ],
+      "title": "Avg Time to Register",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "red", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 7 },
+      "id": 22,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_user_blacklisted_count{job=\"postgres-exporter\"}",
+          "legendFormat": "blacklisted"
+        }
+      ],
+      "title": "Blacklisted Users",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "purple", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 7 },
+      "id": 23,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_user_multi_auth_count{job=\"postgres-exporter\"}",
+          "legendFormat": "multi-auth"
+        }
+      ],
+      "title": "Multi-Auth Users",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 7 },
+      "id": 24,
+      "targets": [
+        {
+          "expr": "follow_user_auth_methods_count{job=\"postgres-exporter\"}",
+          "legendFormat": "{{provider}}"
+        }
+      ],
+      "title": "Auth Methods Over Time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 },
       "id": 101,
       "title": "Routes",
       "type": "row"
@@ -144,7 +263,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 7 },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 13 },
       "id": 6,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
@@ -166,7 +285,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 7 },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 13 },
       "id": 7,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
@@ -187,7 +306,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 7 },
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 13 },
       "id": 8,
       "targets": [
         {
@@ -207,7 +326,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 7 },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 13 },
       "id": 9,
       "targets": [
         {
@@ -220,7 +339,259 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 106,
+      "title": "Route Quality & Content",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 3, "x": 0, "y": 19 },
+      "id": 30,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_route_waypoint_stats_avg_waypoints{job=\"postgres-exporter\"}",
+          "legendFormat": "avg"
+        }
+      ],
+      "title": "Avg Waypoints/Route",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "yellow", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 3, "x": 3, "y": 19 },
+      "id": 31,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_route_waypoint_stats_min_waypoints{job=\"postgres-exporter\"}",
+          "legendFormat": "min"
+        }
+      ],
+      "title": "Min Waypoints",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 3, "x": 6, "y": 19 },
+      "id": 32,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_route_waypoint_stats_max_waypoints{job=\"postgres-exporter\"}",
+          "legendFormat": "max"
+        }
+      ],
+      "title": "Max Waypoints",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 7, "x": 9, "y": 19 },
+      "id": 33,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "displayMode": "gradient", "orientation": "horizontal" },
+      "targets": [
+        {
+          "expr": "follow_route_waypoint_distribution_count{job=\"postgres-exporter\"}",
+          "legendFormat": "{{bucket}}"
+        }
+      ],
+      "title": "Waypoint Distribution",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 19 },
+      "id": 34,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "displayMode": "gradient", "orientation": "horizontal" },
+      "targets": [
+        {
+          "expr": "follow_route_content_with_description{job=\"postgres-exporter\"}",
+          "legendFormat": "description"
+        },
+        {
+          "expr": "follow_route_content_with_location_name{job=\"postgres-exporter\"}",
+          "legendFormat": "location name"
+        },
+        {
+          "expr": "follow_route_content_with_address{job=\"postgres-exporter\"}",
+          "legendFormat": "address"
+        },
+        {
+          "expr": "follow_route_content_with_start_point{job=\"postgres-exporter\"}",
+          "legendFormat": "start point"
+        },
+        {
+          "expr": "follow_route_content_with_end_point{job=\"postgres-exporter\"}",
+          "legendFormat": "end point"
+        }
+      ],
+      "title": "Content Completeness",
+      "type": "bargauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 107,
+      "title": "Route Lifecycle",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "h"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 25 },
+      "id": 35,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_route_publish_stats_avg_publish_seconds{job=\"postgres-exporter\"} / 3600",
+          "legendFormat": "avg hours"
+        }
+      ],
+      "title": "Avg Time to Publish",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [
+            { "color": "green", "value": null },
+            { "color": "orange", "value": 1 },
+            { "color": "red", "value": 5 }
+          ] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 25 },
+      "id": 36,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_route_publish_stats_stuck_routes{job=\"postgres-exporter\"}",
+          "legendFormat": "stuck"
+        }
+      ],
+      "title": "Stuck Routes (>24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 25 },
+      "id": 37,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_route_revisions_count{job=\"postgres-exporter\"}",
+          "legendFormat": "revisions"
+        }
+      ],
+      "title": "Route Revisions",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 25 },
+      "id": 38,
+      "targets": [
+        {
+          "expr": "follow_route_visibility_count{job=\"postgres-exporter\"}",
+          "legendFormat": "{{visibility}}"
+        }
+      ],
+      "title": "Visibility Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 25 },
+      "id": 39,
+      "targets": [
+        {
+          "expr": "follow_route_access_count{job=\"postgres-exporter\"}",
+          "legendFormat": "access: {{access_method}}"
+        },
+        {
+          "expr": "follow_route_lifecycle_count{job=\"postgres-exporter\"}",
+          "legendFormat": "lifecycle: {{lifecycle_type}}"
+        }
+      ],
+      "title": "Access & Lifecycle Over Time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
       "id": 102,
       "title": "Images & Storage",
       "type": "row"
@@ -235,7 +606,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 13 },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 31 },
       "id": 10,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
@@ -256,7 +627,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 5, "w": 8, "x": 4, "y": 13 },
+      "gridPos": { "h": 5, "w": 8, "x": 4, "y": 31 },
       "id": 11,
       "targets": [
         {
@@ -276,7 +647,7 @@
           "unit": "decbytes"
         }
       },
-      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 13 },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 31 },
       "id": 12,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
@@ -297,7 +668,7 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 13 },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 31 },
       "id": 13,
       "targets": [
         {
@@ -318,7 +689,406 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "id": 108,
+      "title": "Growth",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 37 },
+      "id": 40,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_user_growth_new_24h{job=\"postgres-exporter\"}",
+          "legendFormat": "24h"
+        }
+      ],
+      "title": "New Users 24h",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 37 },
+      "id": 41,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_registration_growth_new_24h{job=\"postgres-exporter\"}",
+          "legendFormat": "24h"
+        }
+      ],
+      "title": "New Registrations 24h",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 37 },
+      "id": 42,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_route_growth_new_24h{job=\"postgres-exporter\"}",
+          "legendFormat": "24h"
+        }
+      ],
+      "title": "New Routes 24h",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "purple", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 37 },
+      "id": 43,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_image_growth_new_24h{job=\"postgres-exporter\"}",
+          "legendFormat": "24h"
+        }
+      ],
+      "title": "New Images 24h",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "orange", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 12, "y": 37 },
+      "id": 44,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_bookmark_growth_new_24h{job=\"postgres-exporter\"}",
+          "legendFormat": "24h"
+        }
+      ],
+      "title": "New Bookmarks 24h",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 4, "w": 9, "x": 15, "y": 37 },
+      "id": 45,
+      "targets": [
+        {
+          "expr": "follow_user_growth_new_7d{job=\"postgres-exporter\"}",
+          "legendFormat": "users 7d"
+        },
+        {
+          "expr": "follow_registration_growth_new_7d{job=\"postgres-exporter\"}",
+          "legendFormat": "registrations 7d"
+        },
+        {
+          "expr": "follow_route_growth_new_7d{job=\"postgres-exporter\"}",
+          "legendFormat": "routes 7d"
+        },
+        {
+          "expr": "follow_image_growth_new_7d{job=\"postgres-exporter\"}",
+          "legendFormat": "images 7d"
+        },
+        {
+          "expr": "follow_bookmark_growth_new_7d{job=\"postgres-exporter\"}",
+          "legendFormat": "bookmarks 7d"
+        }
+      ],
+      "title": "7-Day Growth Trend",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "id": 109,
+      "title": "Engagement",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "orange", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 3, "x": 0, "y": 42 },
+      "id": 50,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_engagement_bookmarks_total_bookmarks{job=\"postgres-exporter\"}",
+          "legendFormat": "total"
+        }
+      ],
+      "title": "Total Bookmarks",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 3, "x": 3, "y": 42 },
+      "id": 51,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_engagement_bookmarks_bookmarked_routes{job=\"postgres-exporter\"}",
+          "legendFormat": "routes"
+        }
+      ],
+      "title": "Bookmarked Routes",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 3, "x": 6, "y": 42 },
+      "id": 52,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_engagement_routes_per_user_avg_routes_per_user{job=\"postgres-exporter\"}",
+          "legendFormat": "avg"
+        }
+      ],
+      "title": "Avg Routes/User",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 3, "x": 9, "y": 42 },
+      "id": 53,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_engagement_routes_per_user_max_routes_per_user{job=\"postgres-exporter\"}",
+          "legendFormat": "max"
+        }
+      ],
+      "title": "Max Routes/User",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 3, "x": 12, "y": 42 },
+      "id": 54,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_engagement_sessions_total_sessions{job=\"postgres-exporter\"}",
+          "legendFormat": "sessions"
+        }
+      ],
+      "title": "Active Sessions",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 9, "x": 15, "y": 42 },
+      "id": 55,
+      "targets": [
+        {
+          "expr": "follow_engagement_bookmarks_total_bookmarks{job=\"postgres-exporter\"}",
+          "legendFormat": "bookmarks"
+        },
+        {
+          "expr": "follow_engagement_sessions_total_sessions{job=\"postgres-exporter\"}",
+          "legendFormat": "sessions"
+        },
+        {
+          "expr": "follow_engagement_bookmarks_users_with_bookmarks{job=\"postgres-exporter\"}",
+          "legendFormat": "users w/ bookmarks"
+        }
+      ],
+      "title": "Engagement Over Time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 },
+      "id": 110,
+      "title": "B2B Readiness",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 48 },
+      "id": 60,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_b2b_metrics_public_published_routes{job=\"postgres-exporter\"}",
+          "legendFormat": "public published"
+        }
+      ],
+      "title": "Public Published Routes",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 48 },
+      "id": 61,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_b2b_metrics_group_owned_routes{job=\"postgres-exporter\"}",
+          "legendFormat": "group owned"
+        }
+      ],
+      "title": "Group Owned Routes",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "purple", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 48 },
+      "id": 62,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "follow_route_access_count{access_method=\"password_protected\",job=\"postgres-exporter\"}",
+          "legendFormat": "password protected"
+        }
+      ],
+      "title": "Password Protected",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 48 },
+      "id": 63,
+      "targets": [
+        {
+          "expr": "follow_b2b_metrics_public_published_routes{job=\"postgres-exporter\"}",
+          "legendFormat": "public published"
+        },
+        {
+          "expr": "follow_b2b_metrics_group_owned_routes{job=\"postgres-exporter\"}",
+          "legendFormat": "group owned"
+        },
+        {
+          "expr": "follow_route_access_count{access_method=\"password_protected\",job=\"postgres-exporter\"}",
+          "legendFormat": "password protected"
+        }
+      ],
+      "title": "B2B Metrics Over Time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
       "id": 103,
       "title": "API Operations",
       "type": "row"
@@ -331,7 +1101,7 @@
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 19 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 54 },
       "id": 14,
       "targets": [
         {
@@ -350,7 +1120,7 @@
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 19 },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 54 },
       "id": 15,
       "targets": [
         {
@@ -363,7 +1133,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 61 },
       "id": 104,
       "title": "Image Processing",
       "type": "row"
@@ -376,7 +1146,7 @@
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 27 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 62 },
       "id": 16,
       "targets": [
         {
@@ -395,7 +1165,7 @@
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 27 },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 62 },
       "id": 17,
       "targets": [
         {
