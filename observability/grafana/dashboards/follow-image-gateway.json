@@ -561,8 +561,9 @@
       }
     ]
   },
+  "refresh": "30s",
   "time": { "from": "now-30m", "to": "now" },
   "title": "Follow Image Gateway",
   "uid": "follow-gateway-overview",
-  "version": 2
+  "version": 3
 }

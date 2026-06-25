@@ -515,8 +515,9 @@
       }
     ]
   },
+  "refresh": "30s",
   "time": { "from": "now-30m", "to": "now" },
   "title": "Follow API",
   "uid": "follow-api-overview",
-  "version": 3
+  "version": 4
 }
