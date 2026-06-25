@@ -1151,7 +1151,7 @@ groups:
             relativeTimeRange: { from: 300, to: 0 }
             datasourceUid: prometheus
             model:
-              expr: redis_mem_fragmentation_ratio{job="valkey-exporter"}
+              expr: (redis_mem_fragmentation_ratio{job="valkey-exporter"} > 1.5) and (redis_memory_used_bytes{job="valkey-exporter"} > 50e6)
               instant: true
           - refId: C
             datasourceUid: __expr__
@@ -1161,7 +1161,7 @@ groups:
               conditions:
                 - evaluator:
                     type: gt
-                    params: [1.5]
+                    params: [0]
 
   # ── Go Runtime Alerts (application services) ────────────────────
   - orgId: 1
