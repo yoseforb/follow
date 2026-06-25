@@ -31,7 +31,7 @@ The platform consists of 5 repositories that together form the complete system:
 
 **Co-location pattern**: Each sub-repo is an independent git repository. The `.gitignore` in this coordination repo excludes all sub-repos so they don't appear as untracked files. Cross-repo documentation lives in `ai-docs/` here; repo-internal documentation stays within each repo.
 
-**Full-stack development**: `docker-compose.yml` in this repo orchestrates all services (PostgreSQL, MinIO, Valkey, follow-api, follow-image-gateway) for integrated local development. Per-repo compose files still work for isolated single-service development.
+**Full-stack development**: `docker-compose.yml` in this repo orchestrates all services (PostgreSQL, MinIO, Valkey, follow-api, follow-image-gateway) plus the full observability stack. Used for both local development and production deployment. Per-repo compose files still work for isolated single-service development.
 
 ## Cross-Repo Architecture
 
@@ -179,14 +179,25 @@ See `ai-docs/architecture/image-gateway-architecture.md` for the full architectu
 | SharedPreferences | Simple key-value storage |
 | CachedNetworkImage | Image caching |
 
-### Infrastructure
+### Infrastructure & Observability
 
 | Technology | Purpose | Status |
 |------------|---------|--------|
-| Docker / Docker Compose | Local development orchestration | Active |
-| PostgreSQL | Relational database | Active |
-| MinIO | S3-compatible object storage (local dev) | Active |
+| Docker / Docker Compose | Production deployment and local development | Active |
+| Cloudflare Tunnel | Public ingress (no exposed ports) | Active |
+| Caddy | Reverse proxy (local prod profile testing) | Active |
+| PostgreSQL | Relational database (with slow query logging) | Active |
+| MinIO | S3-compatible object storage | Active |
 | Valkey | Redis-compatible messaging via Redis Streams (BSD-3-Clause) | Active |
+| Prometheus | Metrics collection and alerting | Active |
+| Grafana | Dashboards and alert visualization | Active |
+| Loki + Alloy | Centralized log collection and querying | Active |
+| cAdvisor | Per-container resource metrics | Active |
+| node-exporter | Host system metrics | Active |
+| postgres-exporter | PostgreSQL metrics | Active |
+| redis_exporter | Valkey metrics | Active |
+| Mailpit | Email testing (dev/integration) | Active |
+| age-encrypted backup sidecar | pg_dump + MinIO mirror + .env to R2 | Active |
 
 ## Architecture Patterns by Repo
 
@@ -301,6 +312,8 @@ golangci-lint run --build-tags integration -c .golangci.yml ./...
 go mod tidy
 ```
 
+**Coverage**: behavioral flow (route lifecycle end-to-end), image upload/progress/failure propagation, Valkey upload guard/recovery, route sync/revisions, registered user auth flows (login, registration, OAuth, password reset, session lifecycle, token expiry, concurrency/idempotency, edge cases), account deletion cascades, infrastructure health checks, stale image reaper, resend cooldowns, admin JWT auth.
+
 ## Cross-Repo Development Workflows
 
 ### When Changing an API Endpoint
@@ -351,19 +364,45 @@ Two JWT systems are in use:
 
 | Repo | Status | Current Focus |
 |------|--------|---------------|
-| follow-api | **MVP functional** -- full route lifecycle, user auth, gateway integration, Valkey consumer, SSE streaming | Route and User domain MVP |
-| follow-image-gateway | **Fully integrated** -- 4-stage pipeline, ML detection, Valkey messaging, Ed25519 auth | Operational (all phases complete) |
-| follow-app | Planning complete, implementation starting | MVVM foundation with Provider (5-phase plan) |
-| follow-pkg | Active | Shared Valkey contracts, logger, UploadGuard, ProgressTracker, Producer |
-| follow-business | MVP complete, market research phase | Finding pilot customer/partner |
+| follow-api | **Production** -- full route lifecycle, user auth, OAuth, gateway integration, Valkey consumer, SSE streaming, Prometheus metrics | Stabilization and feature expansion |
+| follow-image-gateway | **Production** -- 4-stage pipeline, ML detection (face + plate + vehicle-gated), Valkey messaging, Ed25519 auth, Prometheus metrics | Operational (all phases complete) |
+| follow-app | **Active development** -- auth system (BLoC), route creation, navigation, discovery, sync | BLoC migration + feature buildout |
+| follow-pkg | **Production** | Shared Valkey contracts, logger, UploadGuard, ProgressTracker, Producer |
+| follow-business | Market validation phase | Finding pilot customer/partner |
 
-### MVP Scope
+### Production Deployment
+
+The backend services run in production on a Hetzner VPS with Docker Compose orchestration:
+
+- **Ingress**: Cloudflare Tunnel (no exposed ports on the host, all ports bound to 127.0.0.1)
+- **Reverse proxy**: Caddy (local prod profile testing via `Caddyfile.local`)
+- **Backups**: Automated sidecar -- pg_dump, MinIO mirror, age-encrypted .env → Cloudflare R2
+- **Observability**: Full Prometheus + Grafana + Loki stack with 32+ provisioned alert rules, Telegram notifications for critical alerts
+- **Logging**: JSON-format structured logging (zerolog) collected by Alloy → Loki
+
+### Observability Stack
+
+Dashboards (Grafana, provisioned as code in `observability/`):
+
+| Folder | Dashboard | Scope |
+|--------|-----------|-------|
+| Application | follow-api, follow-image-gateway | Per-service request metrics |
+| Application | Go Runtime | Goroutines, heap, GC, allocations |
+| Application | Business Metrics | Entity counts, growth, API operations |
+| Infrastructure | Container Metrics, Node Exporter | Host and container resource usage |
+| Infrastructure | MinIO, Valkey, PostgreSQL | Storage, messaging, database metrics |
+| Services | Service Status | Uptime and availability timeline |
+| Services | Log Explorer | Loki log search and error tracking |
+
+Alert rules cover: container restarts, scrape target down, PostgreSQL down, SSE connection leaks, goroutine leaks, heap growth, GC pressure, Valkey memory/consumer lag/evictions/fragmentation, MinIO disk/S3 errors/drive health, Loki/Prometheus self-monitoring, backup failures, panic/fatal log detection, error rate spikes. Severity-based routing with faster repeats for critical alerts.
+
+### Current Scope
 
 - **Active domains**: Route, User (Analytics, Image Processing, Payment postponed)
 - **Navigation model**: Trust-based sequential waypoint following ("look and go")
-- **Authentication**: Anonymous tokens progressing to user registration
+- **Authentication**: Anonymous tokens progressing to user registration, OAuth (Google/Apple)
 - **Platforms**: Android (primary), iOS (future-ready), Web Mobile (essential features)
-- **Storage**: Local MinIO for MVP, cloud storage (S3/GCS) for production
+- **Storage**: MinIO (self-hosted), Cloudflare R2 (backups)
 - **Languages**: English + Hebrew (full RTL support)
 
 ## Planning and ADR Guidelines
@@ -470,11 +509,14 @@ Use imperative mood ("add", "fix", "update" -- not "added", "fixed", "updated").
 | API error architecture guide | `/home/yoseforb/pkg/follow/follow-api/ai-docs/architecture/error-architecture/` |
 | API TDD workflow | `/home/yoseforb/pkg/follow/follow-api/ai-docs/workflows/tdd-red-green-refactor-workflow.md` |
 | Full-stack Docker Compose | `/home/yoseforb/pkg/follow/docker-compose.yml` |
+| Observability (dashboards, alerts, provisioning) | `/home/yoseforb/pkg/follow/observability/` |
+| Deployment plans | `/home/yoseforb/pkg/follow/ai-docs/planning/active/hetzner-mvp-deployment-plan.md` |
+| Backup sidecar | `/home/yoseforb/pkg/follow/scripts/backup.sh` |
 | Business research context | `/home/yoseforb/pkg/follow/follow-business/CLAUDE.md` |
 
 ## Business Context
 
-Follow's MVP is complete and the project is in market validation phase -- seeking pilot customers and partnership opportunities. The technical foundation is solid and designed for rapid adaptation to specific partner needs.
+Follow is in production and market validation phase -- backend services deployed, seeking pilot customers and partnership opportunities. The technical foundation is production-ready and designed for rapid adaptation to specific partner needs.
 
 **Target market path**: B2B partnerships that reach B2C end users. The route creator (business) pays, not the navigating end user.
 
