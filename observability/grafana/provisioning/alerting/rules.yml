@@ -1246,3 +1246,35 @@ groups:
                 - evaluator:
                     type: gt
                     params: [10]
+
+  # ── SSE Connection Alerts ────────────────────────────────────────
+  - orgId: 1
+    name: sse-alerts
+    folder: Application
+    interval: 1m
+    rules:
+      - uid: sse-connections-high
+        title: SSE active connections above 100
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSE active connections above 100 — possible connection leak or unusual load"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: follow_api_sse_active_connections{job="follow-api"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [100]
