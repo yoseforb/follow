@@ -242,6 +242,7 @@
   "time": { "from": "now-3h", "to": "now" },
   "refresh": "30s",
   "schemaVersion": 39,
+  "tags": ["docker", "observability"],
   "title": "Container Metrics — Docker",
   "uid": "container-metrics-docker"
 }

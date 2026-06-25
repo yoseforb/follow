@@ -301,6 +301,7 @@
   "time": { "from": "now-3h", "to": "now" },
   "refresh": "30s",
   "schemaVersion": 39,
+  "tags": ["postgresql", "observability"],
   "title": "PostgreSQL — Database Metrics",
   "uid": "postgres-exporter-db"
 }
