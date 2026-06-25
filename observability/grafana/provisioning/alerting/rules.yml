@@ -379,6 +379,32 @@ groups:
     folder: Infrastructure
     interval: 1m
     rules:
+      - uid: pg-down
+        title: PostgreSQL is down
+        noDataState: OK
+        condition: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL exporter cannot reach the database"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: pg_up{job="postgres-exporter"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
+
       - uid: pg-connections-high
         title: PostgreSQL connections above 80%
         noDataState: OK
