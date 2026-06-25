@@ -916,3 +916,113 @@ groups:
                 - evaluator:
                     type: gt
                     params: [0]
+
+  # ── MinIO Alerts ─────────────────────────────────────────────────
+  - orgId: 1
+    name: minio-alerts
+    folder: Infrastructure
+    interval: 1m
+    rules:
+      - uid: minio-disk-usage-high
+        title: MinIO disk usage above 80%
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MinIO disk usage above 80% — image storage running low"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: 1 - (minio_cluster_health_capacity_usable_free_bytes{job="minio"} / minio_cluster_health_capacity_usable_total_bytes{job="minio"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.80]
+
+      - uid: minio-disk-usage-critical
+        title: MinIO disk usage above 90% — action needed
+        noDataState: OK
+        condition: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO disk usage above 90% — image uploads will fail soon"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: 1 - (minio_cluster_health_capacity_usable_free_bytes{job="minio"} / minio_cluster_health_capacity_usable_total_bytes{job="minio"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0.90]
+
+      - uid: minio-s3-errors-high
+        title: MinIO S3 error rate above 1/sec
+        noDataState: OK
+        condition: C
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MinIO S3 errors sustained above 1/sec — storage operations degraded"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(minio_api_requests_errors_total{job="minio"}[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [1]
+
+      - uid: minio-drive-unhealthy
+        title: MinIO drive unhealthy
+        noDataState: OK
+        condition: C
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO drive is unhealthy — data integrity at risk"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: minio_system_drive_health{job="minio"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: lt
+                    params: [1]
