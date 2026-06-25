@@ -279,6 +279,58 @@ groups:
                     type: gt
                     params: [60]
 
+      - uid: loki-down
+        title: Loki is down
+        noDataState: OK
+        condition: C
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loki container is not running — log collection and queries unavailable"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max by (name) (time() - container_last_seen{name="follow-loki",id=~"/system.slice/docker-.*",job="cadvisor"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+
+      - uid: prometheus-down
+        title: Prometheus is down
+        noDataState: Alerting
+        condition: C
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus container is not running — metrics collection and alerting unavailable"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              expr: max by (name) (time() - container_last_seen{name="follow-prometheus",id=~"/system.slice/docker-.*",job="cadvisor"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [60]
+
   # ── Container Alerts ─────────────────────────────────────────────
   - orgId: 1
     name: container-alerts
