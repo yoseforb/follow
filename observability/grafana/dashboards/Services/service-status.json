@@ -26,12 +26,12 @@
       },
       "gridPos": { "h": 4, "w": 3, "x": 0, "y": 1 },
       "id": 1,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "colorMode": "background", "textMode": "value" },
       "title": "Follow API",
       "type": "stat",
       "targets": [
         {
-          "expr": "time() - max(container_start_time_seconds{name=\"follow-api\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "expr": "(time() - max(container_start_time_seconds{name=\"follow-api\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})) and on() (max(time() - container_last_seen{name=\"follow-api\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"}) < 120)",
           "legendFormat": "uptime"
         }
       ]
@@ -51,12 +51,12 @@
       },
       "gridPos": { "h": 4, "w": 3, "x": 3, "y": 1 },
       "id": 2,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "colorMode": "background", "textMode": "value" },
       "title": "Image Gateway",
       "type": "stat",
       "targets": [
         {
-          "expr": "time() - max(container_start_time_seconds{name=\"follow-image-gateway\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "expr": "(time() - max(container_start_time_seconds{name=\"follow-image-gateway\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})) and on() (max(time() - container_last_seen{name=\"follow-image-gateway\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"}) < 120)",
           "legendFormat": "uptime"
         }
       ]
@@ -76,12 +76,12 @@
       },
       "gridPos": { "h": 4, "w": 3, "x": 6, "y": 1 },
       "id": 3,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "colorMode": "background", "textMode": "value" },
       "title": "PostgreSQL",
       "type": "stat",
       "targets": [
         {
-          "expr": "time() - max(container_start_time_seconds{name=\"follow-postgres\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "expr": "(time() - max(container_start_time_seconds{name=\"follow-postgres\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})) and on() (max(time() - container_last_seen{name=\"follow-postgres\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"}) < 120)",
           "legendFormat": "uptime"
         }
       ]
@@ -101,12 +101,12 @@
       },
       "gridPos": { "h": 4, "w": 3, "x": 9, "y": 1 },
       "id": 4,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "colorMode": "background", "textMode": "value" },
       "title": "MinIO",
       "type": "stat",
       "targets": [
         {
-          "expr": "time() - max(container_start_time_seconds{name=\"follow-minio\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "expr": "(time() - max(container_start_time_seconds{name=\"follow-minio\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})) and on() (max(time() - container_last_seen{name=\"follow-minio\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"}) < 120)",
           "legendFormat": "uptime"
         }
       ]
@@ -126,12 +126,12 @@
       },
       "gridPos": { "h": 4, "w": 3, "x": 12, "y": 1 },
       "id": 5,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "colorMode": "background", "textMode": "value" },
       "title": "Valkey",
       "type": "stat",
       "targets": [
         {
-          "expr": "time() - max(container_start_time_seconds{name=\"follow-valkey\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "expr": "(time() - max(container_start_time_seconds{name=\"follow-valkey\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})) and on() (max(time() - container_last_seen{name=\"follow-valkey\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"}) < 120)",
           "legendFormat": "uptime"
         }
       ]
@@ -151,12 +151,12 @@
       },
       "gridPos": { "h": 4, "w": 3, "x": 15, "y": 1 },
       "id": 6,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "colorMode": "background", "textMode": "value" },
       "title": "Grafana",
       "type": "stat",
       "targets": [
         {
-          "expr": "time() - max(container_start_time_seconds{name=\"follow-grafana\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "expr": "(time() - max(container_start_time_seconds{name=\"follow-grafana\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})) and on() (max(time() - container_last_seen{name=\"follow-grafana\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"}) < 120)",
           "legendFormat": "uptime"
         }
       ]
@@ -176,12 +176,12 @@
       },
       "gridPos": { "h": 4, "w": 3, "x": 18, "y": 1 },
       "id": 7,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "colorMode": "background", "textMode": "value" },
       "title": "Prometheus",
       "type": "stat",
       "targets": [
         {
-          "expr": "time() - max(container_start_time_seconds{name=\"follow-prometheus\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "expr": "(time() - max(container_start_time_seconds{name=\"follow-prometheus\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})) and on() (max(time() - container_last_seen{name=\"follow-prometheus\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"}) < 120)",
           "legendFormat": "uptime"
         }
       ]
@@ -201,12 +201,12 @@
       },
       "gridPos": { "h": 4, "w": 3, "x": 21, "y": 1 },
       "id": 8,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value" },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "colorMode": "background", "textMode": "value" },
       "title": "Loki",
       "type": "stat",
       "targets": [
         {
-          "expr": "time() - max(container_start_time_seconds{name=\"follow-loki\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})",
+          "expr": "(time() - max(container_start_time_seconds{name=\"follow-loki\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"})) and on() (max(time() - container_last_seen{name=\"follow-loki\",id=~\"/system.slice/docker-.*\",job=\"cadvisor\"}) < 120)",
           "legendFormat": "uptime"
         }
       ]
