@@ -512,6 +512,10 @@ services:
       DATA_SOURCE_URI: "postgres:5432/${POSTGRES_DB}?sslmode=disable"
       DATA_SOURCE_USER: "postgres_exporter"
       DATA_SOURCE_PASS: "${POSTGRES_EXPORTER_PASSWORD}"
+    volumes:
+      - ./observability/postgres-exporter/custom-queries.yml:/etc/postgres-exporter/custom-queries.yml:ro
+    command:
+      - --extend.query-path=/etc/postgres-exporter/custom-queries.yml
     networks:
       - internal
     logging:

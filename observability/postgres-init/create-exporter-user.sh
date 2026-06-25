@@ -10,4 +10,12 @@ BEGIN
   END IF;
 END
 \$\$;
+
+-- Schema access for custom business metrics queries
+GRANT USAGE ON SCHEMA "user" TO postgres_exporter;
+GRANT USAGE ON SCHEMA route TO postgres_exporter;
+GRANT USAGE ON SCHEMA images TO postgres_exporter;
+GRANT SELECT ON "user".users TO postgres_exporter;
+GRANT SELECT ON route.routes TO postgres_exporter;
+GRANT SELECT ON images.images TO postgres_exporter;
 SQL

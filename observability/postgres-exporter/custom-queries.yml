@@ -1,0 +1,53 @@
+follow_users:
+  query: |
+    SELECT user_type, count(*) AS count
+    FROM "user".users
+    GROUP BY user_type
+  metrics:
+    - user_type:
+        usage: "LABEL"
+        description: "User lifecycle type"
+    - count:
+        usage: "GAUGE"
+        description: "Number of users by type"
+
+follow_routes:
+  query: |
+    SELECT status, count(*) AS count
+    FROM route.routes
+    WHERE deleted_at IS NULL
+    GROUP BY status
+  metrics:
+    - status:
+        usage: "LABEL"
+        description: "Route lifecycle status"
+    - count:
+        usage: "GAUGE"
+        description: "Number of routes by status"
+
+follow_routes_by_owner:
+  query: |
+    SELECT owner_type, count(*) AS count
+    FROM route.routes
+    WHERE deleted_at IS NULL
+    GROUP BY owner_type
+  metrics:
+    - owner_type:
+        usage: "LABEL"
+        description: "Route owner type"
+    - count:
+        usage: "GAUGE"
+        description: "Number of routes by owner type"
+
+follow_images:
+  query: |
+    SELECT upload_status, count(*) AS count
+    FROM images.images
+    GROUP BY upload_status
+  metrics:
+    - upload_status:
+        usage: "LABEL"
+        description: "Image upload status"
+    - count:
+        usage: "GAUGE"
+        description: "Number of images by upload status"

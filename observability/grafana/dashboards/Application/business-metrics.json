@@ -8,7 +8,7 @@
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
       "id": 100,
-      "title": "Entity Counts",
+      "title": "Users",
       "type": "row"
     },
     {
@@ -21,16 +21,16 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
       "id": 1,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"user\",relname=\"users\",job=\"postgres-exporter\"}",
-          "legendFormat": "users"
+          "expr": "sum(follow_users_count{job=\"postgres-exporter\"})",
+          "legendFormat": "total"
         }
       ],
-      "title": "Users",
+      "title": "Total Users",
       "type": "stat"
     },
     {
@@ -39,20 +39,20 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "decimals": 0,
-          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
       "id": 2,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"route\",relname=\"routes\",job=\"postgres-exporter\"}",
-          "legendFormat": "routes"
+          "expr": "follow_users_count{user_type=\"registered\",job=\"postgres-exporter\"}",
+          "legendFormat": "registered"
         }
       ],
-      "title": "Routes",
+      "title": "Registered",
       "type": "stat"
     },
     {
@@ -61,20 +61,20 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "decimals": 0,
-          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "thresholds": { "steps": [{ "color": "yellow", "value": null }] },
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
       "id": 3,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"route\",relname=\"waypoints\",job=\"postgres-exporter\"}",
-          "legendFormat": "waypoints"
+          "expr": "follow_users_count{user_type=\"anonymous\",job=\"postgres-exporter\"}",
+          "legendFormat": "anonymous"
         }
       ],
-      "title": "Waypoints",
+      "title": "Anonymous",
       "type": "stat"
     },
     {
@@ -83,43 +83,56 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "decimals": 0,
-          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "thresholds": { "steps": [{ "color": "orange", "value": null }] },
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
       "id": 4,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"images\",relname=\"images\",job=\"postgres-exporter\"}",
-          "legendFormat": "images"
+          "expr": "follow_users_count{user_type=\"pending\",job=\"postgres-exporter\"}",
+          "legendFormat": "pending"
         }
       ],
-      "title": "Images",
+      "title": "Pending Registration",
       "type": "stat"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } },
           "decimals": 0,
-          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 1 },
       "id": 5,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"route\",relname=\"saved_routes\",job=\"postgres-exporter\"}",
-          "legendFormat": "saved"
+          "expr": "follow_users_count{user_type=\"registered\",job=\"postgres-exporter\"}",
+          "legendFormat": "registered"
+        },
+        {
+          "expr": "follow_users_count{user_type=\"anonymous\",job=\"postgres-exporter\"}",
+          "legendFormat": "anonymous"
+        },
+        {
+          "expr": "follow_users_count{user_type=\"pending\",job=\"postgres-exporter\"}",
+          "legendFormat": "pending"
         }
       ],
-      "title": "Saved Routes",
-      "type": "stat"
+      "title": "Users Over Time by Type",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 101,
+      "title": "Routes",
+      "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
@@ -131,125 +144,181 @@
           "unit": "short"
         }
       },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 7 },
       "id": 6,
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"user\",relname=\"user_sessions\",job=\"postgres-exporter\"}",
-          "legendFormat": "sessions"
+          "expr": "sum(follow_routes_count{job=\"postgres-exporter\"})",
+          "legendFormat": "total"
         }
       ],
-      "title": "Active Sessions",
+      "title": "Total Routes",
       "type": "stat"
     },
     {
-      "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
-      "id": 101,
-      "title": "Growth Over Time",
-      "type": "row"
-    },
-    {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
-          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "color": { "mode": "thresholds" },
           "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
           "unit": "short"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 6 },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 7 },
       "id": 7,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"user\",relname=\"users\",job=\"postgres-exporter\"}",
-          "legendFormat": "users"
-        },
-        {
-          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"route\",relname=\"routes\",job=\"postgres-exporter\"}",
-          "legendFormat": "routes"
+          "expr": "follow_routes_count{status=\"published\",job=\"postgres-exporter\"}",
+          "legendFormat": "published"
         }
       ],
-      "title": "Users & Routes Over Time",
-      "type": "timeseries"
+      "title": "Published",
+      "type": "stat"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
-          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } },
           "decimals": 0,
           "unit": "short"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 6 },
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 7 },
       "id": 8,
       "targets": [
         {
-          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"images\",relname=\"images\",job=\"postgres-exporter\"}",
-          "legendFormat": "images (DB)"
-        },
-        {
-          "expr": "minio_cluster_usage_objects_count{job=\"minio\"}",
-          "legendFormat": "objects (MinIO)"
+          "expr": "follow_routes_count{job=\"postgres-exporter\"}",
+          "legendFormat": "{{status}}"
         }
       ],
-      "title": "Images & Storage Objects Over Time",
+      "title": "Routes by Status Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 7 },
+      "id": 9,
+      "targets": [
+        {
+          "expr": "follow_routes_by_owner_count{job=\"postgres-exporter\"}",
+          "legendFormat": "{{owner_type}}"
+        }
+      ],
+      "title": "Routes by Owner Type Over Time",
       "type": "timeseries"
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 },
       "id": 102,
-      "title": "Database Activity",
+      "title": "Images & Storage",
       "type": "row"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
-          "custom": { "drawStyle": "bars", "fillOpacity": 50, "stacking": { "mode": "normal" } },
-          "unit": "ops"
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
-      "id": 9,
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 13 },
+      "id": 10,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "rate(pg_stat_user_tables_n_tup_ins{schemaname=~\"route|user|images\",job=\"postgres-exporter\"}[5m])",
-          "legendFormat": "{{schemaname}}.{{relname}} inserts"
+          "expr": "sum(follow_images_count{job=\"postgres-exporter\"})",
+          "legendFormat": "total"
         }
       ],
-      "title": "Row Inserts / sec by Table",
+      "title": "Total Images",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 8, "x": 4, "y": 13 },
+      "id": 11,
+      "targets": [
+        {
+          "expr": "follow_images_count{job=\"postgres-exporter\"}",
+          "legendFormat": "{{upload_status}}"
+        }
+      ],
+      "title": "Images by Upload Status Over Time",
       "type": "timeseries"
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
         "defaults": {
-          "custom": { "drawStyle": "bars", "fillOpacity": 50, "stacking": { "mode": "normal" } },
-          "unit": "ops"
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "decbytes"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
-      "id": 10,
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 13 },
+      "id": 12,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [
         {
-          "expr": "rate(pg_stat_user_tables_n_tup_upd{schemaname=~\"route|user|images\",job=\"postgres-exporter\"}[5m])",
-          "legendFormat": "{{schemaname}}.{{relname}} updates"
-        },
-        {
-          "expr": "rate(pg_stat_user_tables_n_tup_del{schemaname=~\"route|user|images\",job=\"postgres-exporter\"}[5m])",
-          "legendFormat": "{{schemaname}}.{{relname}} deletes"
+          "expr": "minio_cluster_usage_objects_total_bytes{job=\"minio\"}",
+          "legendFormat": "total"
         }
       ],
-      "title": "Row Updates & Deletes / sec by Table",
+      "title": "Total Image Storage",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 13 },
+      "id": 13,
+      "targets": [
+        {
+          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"route\",relname=\"waypoints\",job=\"postgres-exporter\"}",
+          "legendFormat": "waypoints"
+        },
+        {
+          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"route\",relname=\"saved_routes\",job=\"postgres-exporter\"}",
+          "legendFormat": "saved routes"
+        },
+        {
+          "expr": "pg_stat_user_tables_n_live_tup{schemaname=\"user\",relname=\"user_sessions\",job=\"postgres-exporter\"}",
+          "legendFormat": "active sessions"
+        }
+      ],
+      "title": "Waypoints, Bookmarks & Sessions Over Time",
       "type": "timeseries"
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
       "id": 103,
       "title": "API Operations",
       "type": "row"
@@ -262,8 +331,8 @@
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 22 },
-      "id": 11,
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 19 },
+      "id": 14,
       "targets": [
         {
           "expr": "sum(rate(follow_api_module_operations_total{status=\"ok\"}[5m])) by (module, operation)",
@@ -281,8 +350,8 @@
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 22 },
-      "id": 12,
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 19 },
+      "id": 15,
       "targets": [
         {
           "expr": "sum(rate(follow_api_http_requests_total{path!~\"/health|/metrics\"}[5m])) by (method, path)",
@@ -294,7 +363,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 29 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
       "id": 104,
       "title": "Image Processing",
       "type": "row"
@@ -307,8 +376,8 @@
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 30 },
-      "id": 13,
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 27 },
+      "id": 16,
       "targets": [
         {
           "expr": "sum(rate(follow_gateway_upload_submit_total[5m])) by (result)",
@@ -326,8 +395,8 @@
           "unit": "ops"
         }
       },
-      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 30 },
-      "id": 14,
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 27 },
+      "id": 17,
       "targets": [
         {
           "expr": "sum(rate(follow_gateway_pipeline_jobs_completed_total[5m])) by (status)",
@@ -336,27 +405,6 @@
       ],
       "title": "Images Processed / sec",
       "type": "timeseries"
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }] },
-          "unit": "decbytes"
-        }
-      },
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 30 },
-      "id": 15,
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [
-        {
-          "expr": "minio_cluster_usage_objects_total_bytes{job=\"minio\"}",
-          "legendFormat": "total"
-        }
-      ],
-      "title": "Total Image Storage",
-      "type": "stat"
     }
   ],
   "refresh": "1m",
