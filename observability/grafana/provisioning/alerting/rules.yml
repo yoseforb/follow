@@ -1300,12 +1300,18 @@ groups:
             datasourceUid: P8E80F9AEF21F6940
             model:
               expr: sum by (container) (count_over_time({container=~"follow-api|follow-image-gateway"} | json | level=~"fatal|panic" [5m]))
-              instant: false
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
           - refId: C
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: B
               conditions:
                 - evaluator:
                     type: gt
@@ -1326,12 +1332,18 @@ groups:
             datasourceUid: P8E80F9AEF21F6940
             model:
               expr: sum by (container) (count_over_time({container=~"follow-api|follow-image-gateway"} | json | level="error" [1m]))
-              instant: false
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
           - refId: C
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: B
               conditions:
                 - evaluator:
                     type: gt
@@ -1352,12 +1364,18 @@ groups:
             datasourceUid: P8E80F9AEF21F6940
             model:
               expr: sum by (container) (count_over_time({container=~"follow-api|follow-image-gateway"} | json | level="error" [1m]))
-              instant: false
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
           - refId: C
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: B
               conditions:
                 - evaluator:
                     type: gt
@@ -1385,12 +1403,18 @@ groups:
             model:
               expr: >-
                 count_over_time({container="follow-backup-1"} |= "backup: complete" [25h])
-              instant: false
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
           - refId: C
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: B
               conditions:
                 - evaluator:
                     type: lt
@@ -1412,12 +1436,18 @@ groups:
             model:
               expr: >-
                 count_over_time({container="follow-backup-1"} |~ "error|failed|fatal" [1h])
-              instant: false
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
           - refId: C
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: B
               conditions:
                 - evaluator:
                     type: gt
