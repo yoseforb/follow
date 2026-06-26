@@ -2,7 +2,7 @@ apiVersion: 1
 
 policies:
   - orgId: 1
-    receiver: follow-email
+    receiver: follow-telegram
     group_by:
       - grafana_folder
       - alertname
@@ -13,14 +13,18 @@ policies:
       - receiver: follow-telegram
         matchers:
           - severity = critical
-        group_wait: 15s
-        group_interval: 2m
+        group_by:
+          - grafana_folder
+        group_wait: 30s
+        group_interval: 5m
         repeat_interval: 1h
         continue: true
       - receiver: follow-email
         matchers:
           - severity = critical
-        group_wait: 15s
-        group_interval: 2m
-        repeat_interval: 1h
+        group_by:
+          - grafana_folder
+        group_wait: 1m
+        group_interval: 5m
+        repeat_interval: 4h
         continue: false

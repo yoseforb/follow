@@ -10,6 +10,7 @@ groups:
       - uid: host-cpu-high
         title: Host CPU above 85%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -36,6 +37,7 @@ groups:
       - uid: host-memory-high
         title: Host memory above 85%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -62,6 +64,7 @@ groups:
       - uid: host-disk-warning
         title: Disk usage above 80%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -88,6 +91,7 @@ groups:
       - uid: host-disk-critical
         title: Disk usage above 90% — action needed
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 1m
         labels:
@@ -114,6 +118,7 @@ groups:
       - uid: host-load-high
         title: Host load average above 4
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 10m
         labels:
@@ -152,6 +157,7 @@ groups:
       - uid: api-down
         title: Follow API is down
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 30s
         labels:
@@ -178,6 +184,7 @@ groups:
       - uid: gateway-down
         title: Image Gateway is down
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 1m
         labels:
@@ -204,6 +211,7 @@ groups:
       - uid: postgres-down
         title: PostgreSQL is down
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 1m
         labels:
@@ -230,6 +238,7 @@ groups:
       - uid: minio-down
         title: MinIO is down
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 1m
         labels:
@@ -256,6 +265,7 @@ groups:
       - uid: valkey-down
         title: Valkey is down
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 1m
         labels:
@@ -282,6 +292,7 @@ groups:
       - uid: loki-down
         title: Loki is down
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 2m
         labels:
@@ -308,6 +319,7 @@ groups:
       - uid: prometheus-down
         title: Prometheus is down
         noDataState: Alerting
+        execErrState: Alerting
         condition: C
         for: 2m
         labels:
@@ -340,6 +352,7 @@ groups:
       - uid: container-restart
         title: Container restarting
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
@@ -372,6 +385,7 @@ groups:
       - uid: container-memory-near-limit
         title: Container memory near limit
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -402,6 +416,7 @@ groups:
       - uid: container-restart-loop
         title: Container restart loop
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
@@ -434,6 +449,7 @@ groups:
       - uid: pg-down
         title: PostgreSQL is down
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 1m
         labels:
@@ -460,6 +476,7 @@ groups:
       - uid: pg-connections-high
         title: PostgreSQL connections above 80%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -486,6 +503,7 @@ groups:
       - uid: pg-cache-hit-low
         title: PostgreSQL cache hit ratio below 90%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 10m
         labels:
@@ -517,7 +535,8 @@ groups:
     rules:
       - uid: scrape-target-down
         title: Prometheus scrape target down
-        noDataState: Alerting
+        noDataState: OK
+        execErrState: OK
         condition: C
         for: 2m
         labels:
@@ -550,6 +569,7 @@ groups:
       - uid: api-5xx-rate-high
         title: Follow API error rate above 5%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -576,6 +596,7 @@ groups:
       - uid: api-latency-high
         title: Follow API p95 latency above 2s
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -602,6 +623,7 @@ groups:
       - uid: api-eventbus-poison
         title: Follow API poison queue active
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
@@ -628,6 +650,7 @@ groups:
       - uid: api-auth-failures-spike
         title: Follow API auth failures above 1/sec
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -654,6 +677,7 @@ groups:
       - uid: api-email-failures
         title: Follow API email delivery failing
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
@@ -680,6 +704,7 @@ groups:
       - uid: api-valkey-consumer-errors
         title: Follow API Valkey consumer errors
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -706,6 +731,7 @@ groups:
       - uid: api-scheduler-failures
         title: Follow API scheduler job failing
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
@@ -732,6 +758,7 @@ groups:
       - uid: api-db-pool-exhausted
         title: Follow API DB pool above 80%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -764,6 +791,7 @@ groups:
       - uid: gateway-5xx-rate-high
         title: Gateway error rate above 5%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -790,6 +818,7 @@ groups:
       - uid: gateway-pipeline-queue-deep
         title: Gateway pipeline backing up
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -816,6 +845,7 @@ groups:
       - uid: gateway-pipeline-rejections
         title: Gateway rejecting uploads
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
@@ -842,6 +872,7 @@ groups:
       - uid: gateway-auth-failures-spike
         title: Gateway auth failures above 1/sec
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -868,6 +899,7 @@ groups:
       - uid: gateway-stage-errors
         title: Gateway pipeline stage errors
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -894,6 +926,7 @@ groups:
       - uid: gateway-storage-upload-failures
         title: Gateway MinIO uploads failing
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -926,6 +959,7 @@ groups:
       - uid: minio-disk-usage-high
         title: MinIO disk usage above 80%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -952,6 +986,7 @@ groups:
       - uid: minio-disk-usage-critical
         title: MinIO disk usage above 90% — action needed
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 1m
         labels:
@@ -978,6 +1013,7 @@ groups:
       - uid: minio-s3-errors-high
         title: MinIO S3 error rate above 1/sec
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -1004,6 +1040,7 @@ groups:
       - uid: minio-drive-unhealthy
         title: MinIO drive unhealthy
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 1m
         labels:
@@ -1036,6 +1073,7 @@ groups:
       - uid: valkey-memory-high
         title: Valkey memory usage above 80%
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -1062,6 +1100,7 @@ groups:
       - uid: valkey-consumer-lag-high
         title: Valkey stream consumer lag growing
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -1088,6 +1127,7 @@ groups:
       - uid: valkey-evictions-active
         title: Valkey evicting keys
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -1114,6 +1154,7 @@ groups:
       - uid: valkey-rejected-connections
         title: Valkey rejecting connections
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
@@ -1140,6 +1181,7 @@ groups:
       - uid: valkey-fragmentation-high
         title: Valkey memory fragmentation above 1.5
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 10m
         labels:
@@ -1172,6 +1214,7 @@ groups:
       - uid: go-goroutine-leak
         title: Goroutine count abnormally high
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 10m
         labels:
@@ -1198,6 +1241,7 @@ groups:
       - uid: go-heap-growing
         title: Go heap usage above 512MB
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 10m
         labels:
@@ -1224,6 +1268,7 @@ groups:
       - uid: go-gc-pressure-high
         title: Go GC running too frequently
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 10m
         labels:
@@ -1256,6 +1301,7 @@ groups:
       - uid: sse-connections-high
         title: SSE active connections above 100
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -1288,6 +1334,7 @@ groups:
       - uid: log-panic-fatal
         title: Panic or fatal log detected
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
@@ -1320,6 +1367,7 @@ groups:
       - uid: log-error-rate-high
         title: Error log rate above 5/min
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 5m
         labels:
@@ -1352,6 +1400,7 @@ groups:
       - uid: log-error-rate-critical
         title: Error log rate above 30/min
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 2m
         labels:
@@ -1390,6 +1439,7 @@ groups:
       - uid: backup-not-completed
         title: Daily backup did not complete
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
@@ -1423,6 +1473,7 @@ groups:
       - uid: backup-error
         title: Backup error detected
         noDataState: OK
+        execErrState: OK
         condition: C
         for: 0s
         labels:
