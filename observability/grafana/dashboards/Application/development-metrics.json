@@ -1,0 +1,437 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT SUM(commits_total) AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily)", "format": "table", "refId": "A" }],
+      "title": "Total Commits",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "purple", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT SUM(lines) AS value FROM metrics.git_languages WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_languages) AND language IN ('go','dart')", "format": "table", "refId": "A" }],
+      "title": "Lines of Code (Go + Dart)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT SUM(commits_7d) AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily)", "format": "table", "refId": "A" }],
+      "title": "Commits (Last 7 Days)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "orange", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT SUM(commits_30d) AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily)", "format": "table", "refId": "A" }],
+      "title": "Commits (Last 30 Days)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "yellow", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "id": 5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT SUM(files_total) AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily)", "format": "table", "refId": "A" }],
+      "title": "Total Tracked Files",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "semi-dark-blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "id": 6,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT SUM(contributors_total) AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily)", "format": "table", "refId": "A" }],
+      "title": "Total Contributors",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 101,
+      "title": "Commits by Repository",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 7 },
+      "id": 10,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT repo AS metric, commits_total AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily) ORDER BY commits_total DESC", "format": "table", "refId": "A" }],
+      "title": "Total Commits by Repo",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 7 },
+      "id": 11,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT repo AS metric, commits_30d AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily) ORDER BY commits_30d DESC", "format": "table", "refId": "A" }],
+      "title": "Commits Last 30 Days by Repo",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 7 },
+      "id": 12,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT repo AS metric, commits_7d AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily) ORDER BY commits_7d DESC", "format": "table", "refId": "A" }],
+      "title": "Commits Last 7 Days by Repo",
+      "type": "bargauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 102,
+      "title": "Code Churn",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "pointSize": 5, "showPoints": "auto" },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 20,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [{ "rawSql": "SELECT collected_at AS time, repo AS metric, commits_total AS value FROM metrics.git_daily WHERE $__timeFilter(collected_at) ORDER BY time", "format": "time_series", "refId": "A" }],
+      "title": "Total Commits Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "pointSize": 5, "showPoints": "auto" },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 21,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [{ "rawSql": "SELECT collected_at AS time, repo AS metric, lines_total AS value FROM metrics.git_daily WHERE $__timeFilter(collected_at) ORDER BY time", "format": "time_series", "refId": "A" }],
+      "title": "Total Lines Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "pointSize": 5, "showPoints": "auto" },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*removed.*" }, "properties": [{ "id": "custom.transform", "value": "negative-Y" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 24,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        { "rawSql": "SELECT collected_at AS time, repo || ' added' AS metric, lines_added_30d AS value FROM metrics.git_daily WHERE $__timeFilter(collected_at) ORDER BY time", "format": "time_series", "refId": "A" },
+        { "rawSql": "SELECT collected_at AS time, repo || ' removed' AS metric, lines_removed_30d AS value FROM metrics.git_daily WHERE $__timeFilter(collected_at) ORDER BY time", "format": "time_series", "refId": "B" }
+      ],
+      "title": "Lines Added / Removed Over Time (30d Window)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "pointSize": 5, "showPoints": "auto" },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*removed.*" }, "properties": [{ "id": "custom.transform", "value": "negative-Y" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 25,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom" } },
+      "targets": [
+        { "rawSql": "SELECT collected_at AS time, repo || ' added' AS metric, lines_added_7d AS value FROM metrics.git_daily WHERE $__timeFilter(collected_at) ORDER BY time", "format": "time_series", "refId": "A" },
+        { "rawSql": "SELECT collected_at AS time, repo || ' removed' AS metric, lines_removed_7d AS value FROM metrics.git_daily WHERE $__timeFilter(collected_at) ORDER BY time", "format": "time_series", "refId": "B" }
+      ],
+      "title": "Lines Added / Removed Over Time (7d Window)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*added.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*removed.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 22,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [
+        { "rawSql": "SELECT repo || ' added' AS metric, lines_added_30d AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily) ORDER BY value DESC", "format": "table", "refId": "A" },
+        { "rawSql": "SELECT repo || ' removed' AS metric, lines_removed_30d AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily) ORDER BY value DESC", "format": "table", "refId": "B" }
+      ],
+      "title": "Lines Added / Removed (Last 30 Days)",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "unit": "short" },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*added.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*removed.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "id": 23,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [
+        { "rawSql": "SELECT repo || ' added' AS metric, lines_added_7d AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily) ORDER BY value DESC", "format": "table", "refId": "A" },
+        { "rawSql": "SELECT repo || ' removed' AS metric, lines_removed_7d AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily) ORDER BY value DESC", "format": "table", "refId": "B" }
+      ],
+      "title": "Lines Added / Removed (Last 7 Days)",
+      "type": "bargauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "id": 103,
+      "title": "Commit Types",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 41 },
+      "id": 30,
+      "options": { "legend": { "displayMode": "table", "placement": "right", "values": ["value"] }, "pieType": "donut", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT commit_type AS metric, SUM(count) AS value FROM metrics.git_commit_types WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_commit_types) GROUP BY commit_type ORDER BY value DESC", "format": "table", "refId": "A" }],
+      "title": "Commit Types (All Repos)",
+      "type": "piechart"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 41 },
+      "id": 31,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT commit_type AS metric, count AS value FROM metrics.git_commit_types WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_commit_types) AND repo = 'follow-api' ORDER BY value DESC", "format": "table", "refId": "A" }],
+      "title": "follow-api",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 41 },
+      "id": 32,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT commit_type AS metric, count AS value FROM metrics.git_commit_types WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_commit_types) AND repo = 'follow-app' ORDER BY value DESC", "format": "table", "refId": "A" }],
+      "title": "follow-app",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 49 },
+      "id": 33,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT commit_type AS metric, count AS value FROM metrics.git_commit_types WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_commit_types) AND repo = 'follow-image-gateway' ORDER BY value DESC", "format": "table", "refId": "A" }],
+      "title": "follow-image-gateway",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 49 },
+      "id": 34,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT commit_type AS metric, count AS value FROM metrics.git_commit_types WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_commit_types) AND repo = 'follow-pkg' ORDER BY value DESC", "format": "table", "refId": "A" }],
+      "title": "follow-pkg",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 49 },
+      "id": 35,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT commit_type AS metric, count AS value FROM metrics.git_commit_types WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_commit_types) AND repo = 'follow' ORDER BY value DESC", "format": "table", "refId": "A" }],
+      "title": "follow (coordination)",
+      "type": "bargauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 57 },
+      "id": 104,
+      "title": "Code Composition",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 58 },
+      "id": 40,
+      "options": { "legend": { "displayMode": "table", "placement": "right", "values": ["value"] }, "pieType": "donut", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [{ "rawSql": "SELECT language AS metric, SUM(lines) AS value FROM metrics.git_languages WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_languages) AND language IN ('go','dart','sql','yml','yaml','sh','xml','json') GROUP BY language ORDER BY value DESC", "format": "table", "refId": "A" }],
+      "title": "Lines of Code by Language",
+      "type": "piechart"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "thresholds": { "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 58 },
+      "id": 41,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT repo AS metric, lines AS value FROM metrics.git_languages WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_languages) AND language = 'go' ORDER BY value DESC", "format": "table", "refId": "A" }],
+      "title": "Go Lines by Repo",
+      "type": "bargauge"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "decimals": 0, "thresholds": { "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 58 },
+      "id": 42,
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "rawSql": "SELECT repo AS metric, files_total AS value FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily) ORDER BY value DESC", "format": "table", "refId": "A" }],
+      "title": "Tracked Files by Repo",
+      "type": "bargauge"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 66 },
+      "id": 105,
+      "title": "Repository Details",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Last Commit" }, "properties": [{ "id": "unit", "value": "dateTimeFromNow" }] },
+          { "matcher": { "id": "byName", "options": "First Commit" }, "properties": [{ "id": "unit", "value": "dateTimeAsIso" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 67 },
+      "id": 50,
+      "options": { "footer": { "enablePagination": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "Commits" }] },
+      "targets": [{
+        "rawSql": "SELECT repo AS \"Repository\", commits_total AS \"Commits\", last_commit_epoch * 1000 AS \"Last Commit\", first_commit_epoch * 1000 AS \"First Commit\", files_total AS \"Files\", contributors_total AS \"Contributors\", lines_total AS \"Total Lines\" FROM metrics.git_daily WHERE collected_at = (SELECT MAX(collected_at) FROM metrics.git_daily) ORDER BY commits_total DESC",
+        "format": "table",
+        "refId": "A"
+      }],
+      "title": "Repository Summary",
+      "type": "table"
+    }
+  ],
+  "refresh": "1h",
+  "schemaVersion": 41,
+  "tags": ["development", "git"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1y", "to": "now" },
+  "title": "Development Metrics",
+  "uid": "development-metrics"
+}
