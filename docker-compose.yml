@@ -327,6 +327,30 @@ services:
           memory: 128m
           cpus: "0.5"
 
+  autoheal:
+    image: willfarrell/autoheal:latest
+    profiles: [prod]
+    container_name: follow-autoheal
+    restart: always
+    network_mode: none
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: all
+      AUTOHEAL_INTERVAL: 10
+      AUTOHEAL_START_PERIOD: 60
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.25"
+
   # ── Observability (opt-in) ─────────────────────────────────────────
 
   loki:
