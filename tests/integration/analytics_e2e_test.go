@@ -232,6 +232,161 @@ func TestAnalytics_AccountDeletion_ErasesAnalytics(
 	)
 }
 
+func TestAnalytics_UniqueVisitors_SameUserDedup(
+	t *testing.T,
+) {
+	ownerToken, routeID := createAndPublishRoute(t)
+	t.Cleanup(func() { deleteRoute(t, routeID, ownerToken) })
+
+	visitorID, visitorToken, _ := createAnonymousUser(t)
+	t.Cleanup(func() {
+		deleteUser(t, visitorID, visitorToken)
+	})
+
+	accessRoute(
+		t, routeID, visitorToken,
+		map[string]string{"src": "qr"},
+	)
+	accessRoute(
+		t, routeID, visitorToken,
+		map[string]string{"src": "wa"},
+	)
+	accessRoute(
+		t, routeID, visitorToken,
+		map[string]string{"src": "qr"},
+	)
+
+	waitForAccessCount(
+		t, routeID, ownerToken, 3, 10*time.Second,
+	)
+
+	var summary AnalyticsSummary
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, s := getRouteSummary(
+			t, routeID, ownerToken, "", "",
+		)
+		if resp.StatusCode == http.StatusOK &&
+			s.AccessCount >= 3 {
+			summary = s
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	require.GreaterOrEqual(
+		t, summary.AccessCount, 3,
+		"summary access_count must reach 3 after rollup",
+	)
+
+	assert.Equal(
+		t, 1, summary.UniqueVisitors,
+		"same user accessing 3 times must count as "+
+			"1 unique visitor, not 3",
+	)
+	assert.Equal(
+		t, 1, summary.AnonymousVisitors,
+		"single anonymous visitor must count as 1",
+	)
+	assert.Equal(
+		t, 0, summary.RegisteredVisitors,
+		"no registered visitors in this test",
+	)
+}
+
+func TestAnalytics_Retention_PreservesAggregates(
+	t *testing.T,
+) {
+	if envOrDefault(
+		"INTEGRATION_TEST_MODE", "local",
+	) != "local" {
+		t.Skip(
+			"retention test requires API restart " +
+				"(local mode only)",
+		)
+	}
+
+	ownerToken, routeID := createAndPublishRoute(t)
+	t.Cleanup(func() { deleteRoute(t, routeID, ownerToken) })
+
+	visitorID, visitorToken, _ := createAnonymousUser(t)
+	t.Cleanup(func() {
+		deleteUser(t, visitorID, visitorToken)
+	})
+
+	accessRoute(
+		t, routeID, visitorToken,
+		map[string]string{"src": "qr"},
+	)
+	waitForAccessCount(
+		t, routeID, ownerToken, 1, 10*time.Second,
+	)
+
+	session := newPlausibleSession(2)
+	s := recordNavigationSession(
+		t, routeID, visitorToken, session,
+	)
+	require.Equal(t, http.StatusNoContent, s)
+
+	waitForNavigationCount(
+		t, routeID, ownerToken, 1, 15*time.Second,
+	)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	resp, dailyBefore := getRouteDailyStats(
+		t, routeID, ownerToken, today, today,
+	)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	hasNonZeroDay := false
+	for _, p := range dailyBefore.Points {
+		if p.AccessCount > 0 || p.NavigationsCompleted > 0 {
+			hasNonZeroDay = true
+		}
+	}
+	require.True(
+		t, hasNonZeroDay,
+		"pre-retention: daily stats must have non-zero data",
+	)
+
+	restartAPIProcess(
+		t,
+		"ANALYTICS_RETENTION_DAYS=1",
+		"SCHEDULER_ANALYTICS_RETENTION_INTERVAL=2s",
+	)
+	t.Cleanup(func() {
+		restartAPIProcess(t)
+	})
+
+	time.Sleep(5 * time.Second)
+
+	resp, summaryAfter := getRouteSummary(
+		t, routeID, ownerToken, today, today,
+	)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	assert.GreaterOrEqual(
+		t, summaryAfter.UniqueVisitors, 1,
+		"unique_visitors must survive retention — "+
+			"today's events are within 1-day window",
+	)
+
+	resp, dailyAfter := getRouteDailyStats(
+		t, routeID, ownerToken, today, today,
+	)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	dailyAccessCount := 0
+	for _, p := range dailyAfter.Points {
+		dailyAccessCount += p.AccessCount
+	}
+	assert.Positive(
+		t, dailyAccessCount,
+		"daily stats (aggregates) must survive retention — "+
+			"retention only deletes raw events/sessions, "+
+			"never route_daily_stats",
+	)
+}
+
 func TestAnalytics_NavigatorFirstAttribution(t *testing.T) {
 	ownerAToken, routeA := createAndPublishRoute(t)
 	t.Cleanup(func() { deleteRoute(t, routeA, ownerAToken) })
