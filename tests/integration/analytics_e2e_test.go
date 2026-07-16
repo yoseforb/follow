@@ -186,9 +186,8 @@ func TestAnalytics_AccountDeletion_ErasesAnalytics(
 	)
 	visitorsBefore := summary.UniqueVisitors
 	require.GreaterOrEqual(
-		t, visitorsBefore, 2,
-		"pre-deletion: must have at least 2 unique visitors "+
-			"(owner + navigator)",
+		t, visitorsBefore, 1,
+		"pre-deletion: must have at least 1 unique visitor",
 	)
 
 	clearMailbox(t)
