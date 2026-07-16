@@ -79,4 +79,12 @@ services:
       # validates the flow but ~10x faster than production).
       - AUTH_ARGON2ID_MEMORY=15360
       - AUTH_ARGON2ID_ITERATIONS=1
+      # Analytics plausibility thresholds lowered so tests
+      # don't need 30s+ navigation sessions to pass plausibility.
+      - ANALYTICS_PLAUSIBILITY_MIN_DURATION_PER_WAYPOINT=2s
+      - ANALYTICS_PLAUSIBILITY_MIN_MEDIAN_WAYPOINT_GAP=1s
+      # Analytics scheduler tuned aggressively so rollup/
+      # retention tests don't wait minutes.
+      - SCHEDULER_ANALYTICS_ROLLUP_INTERVAL=2s
+      - SCHEDULER_ANALYTICS_RETENTION_INTERVAL=5s
 
