@@ -68,7 +68,8 @@ func TestRecordNavigationSession_Idempotent(t *testing.T) {
 	status2 := recordNavigationSession(
 		t, routeID, navigatorToken, session,
 	)
-	assert.Equal(t, http.StatusNoContent, status2,
+	assert.Equal(
+		t, http.StatusNoContent, status2,
 		"idempotent retry must also return 204",
 	)
 }
@@ -126,6 +127,42 @@ func TestRecordNavigationSession_InvalidPayload(t *testing.T) {
 	defer resp.Body.Close()
 
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestRecordNavigationSession_PlausibilityClassification(
+	t *testing.T,
+) {
+	ownerToken, routeID := createAndPublishRoute(t)
+	t.Cleanup(func() { deleteRoute(t, routeID, ownerToken) })
+
+	navigatorID, navigatorToken, _ := createAnonymousUser(t)
+	t.Cleanup(func() {
+		deleteUser(t, navigatorID, navigatorToken)
+	})
+
+	plausible := newPlausibleSession(2)
+	s1 := recordNavigationSession(
+		t, routeID, navigatorToken, plausible,
+	)
+	require.Equal(t, http.StatusNoContent, s1)
+
+	implausible := newImplausibleSession(2)
+	s2 := recordNavigationSession(
+		t, routeID, navigatorToken, implausible,
+	)
+	require.Equal(
+		t, http.StatusNoContent, s2,
+		"implausible session must still be accepted (204)",
+	)
+
+	summary := waitForNavigationCount(
+		t, routeID, ownerToken, 1, 15*time.Second,
+	)
+
+	assert.Equal(
+		t, 1, summary.NavigationsCompleted,
+		"only the plausible session must count as completed",
+	)
 }
 
 func TestRecordNavigationSession_AnyUserCanRecord(

@@ -72,6 +72,33 @@ func TestRouteAnalyticsSummary_NoAuth_Gets401(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
+func TestRouteAnalyticsSummary_DefaultDateRange(
+	t *testing.T,
+) {
+	ownerToken, routeID := createAndPublishRoute(t)
+	t.Cleanup(func() { deleteRoute(t, routeID, ownerToken) })
+
+	status, raw := getRawSummaryJSON(
+		t, routeID, ownerToken, "", "",
+	)
+
+	require.Equal(t, http.StatusOK, status)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	thirtyDaysAgo := time.Now().UTC().
+		AddDate(0, 0, -30).
+		Format("2006-01-02")
+
+	assert.Equal(
+		t, today, raw["to"],
+		"default 'to' must be today (UTC)",
+	)
+	assert.Equal(
+		t, thirtyDaysAgo, raw["from"],
+		"default 'from' must be today minus 30 days",
+	)
+}
+
 func TestRouteAnalyticsSummary_InvalidDateRange_ToBeforeFrom(
 	t *testing.T,
 ) {

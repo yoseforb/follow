@@ -154,6 +154,35 @@ func newPlausibleSession(
 	}
 }
 
+// newImplausibleSession builds a session that is too fast to be
+// plausible (total duration < min_duration_per_waypoint * waypoints).
+func newImplausibleSession(
+	totalWaypoints int,
+) NavigationSessionPayload {
+	now := time.Now().UTC()
+	start := now.Add(-100 * time.Millisecond)
+
+	timings := make([]WaypointTiming, totalWaypoints)
+	for i := range totalWaypoints {
+		timings[i] = WaypointTiming{
+			Position: i,
+			ReachedAt: start.Add(
+				time.Duration(i+1) * 10 * time.Millisecond,
+			).Format(time.RFC3339),
+		}
+	}
+
+	return NavigationSessionPayload{
+		SessionID:        uuid.New().String(),
+		StartedAt:        start.Format(time.RFC3339),
+		EndedAt:          now.Format(time.RFC3339),
+		Outcome:          "completed",
+		WaypointsReached: totalWaypoints,
+		TotalWaypoints:   totalWaypoints,
+		WaypointTimings:  timings,
+	}
+}
+
 // newAbandonedSession builds a plausible abandoned navigation session.
 func newAbandonedSession(
 	waypointsReached, totalWaypoints int,
@@ -523,6 +552,33 @@ func getPlatformKillGates(
 	)
 
 	return resp, result
+}
+
+// getRawSummaryJSON calls GET /analytics/routes/{route_id}/summary
+// and returns the raw JSON map (for checking field presence/absence).
+func getRawSummaryJSON(
+	t *testing.T,
+	routeID, authToken string,
+	from, to string,
+) (int, map[string]any) {
+	t.Helper()
+
+	u := fmt.Sprintf(
+		"%s/api/v1/analytics/routes/%s/summary",
+		apiURL, routeID,
+	)
+	u = appendDateParams(u, from, to)
+
+	resp := doRequest(
+		t, http.MethodGet, u, nil, authToken,
+	)
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return resp.StatusCode, nil
+	}
+
+	return resp.StatusCode, decodeJSON(t, resp)
 }
 
 // appendDateParams adds from/to query params to a URL.

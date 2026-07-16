@@ -149,6 +149,79 @@ func TestRouteSave_EventRecorded(t *testing.T) {
 	)
 }
 
+// TestAnalytics_AccountDeletion_ErasesAnalytics is skipped because
+// analytics erasure (EraseActorDataCommand) only fires on the
+// registered-user account deletion event (user.account_deleted),
+// not on anonymous user deletion (user.anonymous.deleted). Testing
+// it end-to-end requires the full registered user flow (register →
+// confirm email → navigate → request deletion → confirm deletion),
+// which should be added as a step in account_deletion_flow_test.go
+// rather than duplicated here.
+func TestAnalytics_AccountDeletion_ErasesAnalytics(
+	t *testing.T,
+) {
+	t.Skip(
+		"analytics erasure requires registered-user deletion " +
+			"flow; covered by account_deletion_flow_test.go",
+	)
+}
+
+func TestAnalytics_NavigatorFirstAttribution(t *testing.T) {
+	ownerAToken, routeA := createAndPublishRoute(t)
+	t.Cleanup(func() { deleteRoute(t, routeA, ownerAToken) })
+
+	navigatorID, navigatorToken, _ := createAnonymousUser(t)
+	t.Cleanup(func() {
+		deleteUser(t, navigatorID, navigatorToken)
+	})
+
+	accessRoute(
+		t, routeA, navigatorToken,
+		map[string]string{"src": "qr"},
+	)
+	waitForAccessCount(
+		t, routeA, ownerAToken, 1, 10*time.Second,
+	)
+
+	routeB := prepareRoute(t, navigatorToken)
+	cwResp := createRouteWithWaypoints(
+		t, navigatorToken, routeB, defaultTestImages,
+	)
+
+	for i, entry := range cwResp.PresignedURLs {
+		imgBytes := loadTestImage(
+			t, defaultTestImages[i].Filename,
+		)
+		resp := uploadToGateway(
+			t, entry.UploadURL, entry.UploadToken, imgBytes,
+		)
+		resp.Body.Close()
+	}
+
+	waitForRouteReady(
+		t, routeB, navigatorToken, 60*time.Second,
+	)
+	publishRoute(t, routeB, navigatorToken)
+	t.Cleanup(func() {
+		deleteRoute(t, routeB, navigatorToken)
+	})
+
+	time.Sleep(5 * time.Second)
+
+	adminTok := adminToken(t)
+	kgResp, kg := getPlatformKillGates(
+		t, adminTok, "", "",
+	)
+	require.Equal(t, http.StatusOK, kgResp.StatusCode)
+
+	assert.GreaterOrEqual(
+		t,
+		kg.Metrics.RoutesCreatedNavigatorFirst, 1,
+		"navigator who accessed another route then created "+
+			"their own must be counted as navigator-first",
+	)
+}
+
 func TestAnalytics_E2E_FullLifecycle(t *testing.T) {
 	ownerToken, routeID := createAndPublishRoute(t)
 	t.Cleanup(func() { deleteRoute(t, routeID, ownerToken) })
