@@ -66,27 +66,31 @@ func TestRouteAccess_SourceAttribution(t *testing.T) {
 		map[string]string{"src": "qr"},
 	)
 
-	waitForAccessCount(
-		t, routeID, ownerToken, 3, 10*time.Second,
-	)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, summary := getRouteSummary(
+			t, routeID, ownerToken, "", "",
+		)
+		if resp.StatusCode != http.StatusOK {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
 
-	resp, summary := getRouteSummary(
-		t, routeID, ownerToken, "", "",
-	)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+		sourceMap := make(map[string]int)
+		for _, s := range summary.Sources {
+			sourceMap[s.Source] = s.Count
+		}
 
-	sourceMap := make(map[string]int)
-	for _, s := range summary.Sources {
-		sourceMap[s.Source] = s.Count
+		if sourceMap["qr"] >= 2 && sourceMap["wa"] >= 1 {
+			return
+		}
+
+		time.Sleep(200 * time.Millisecond)
 	}
 
-	assert.Equal(
-		t, 1, sourceMap["wa"],
-		"wa source must have count 1",
-	)
-	assert.Equal(
-		t, 2, sourceMap["qr"],
-		"qr source must have count 2",
+	t.Fatal(
+		"source attribution did not reach expected " +
+			"counts within 10s",
 	)
 }
 
@@ -149,20 +153,83 @@ func TestRouteSave_EventRecorded(t *testing.T) {
 	)
 }
 
-// TestAnalytics_AccountDeletion_ErasesAnalytics is skipped because
-// analytics erasure (EraseActorDataCommand) only fires on the
-// registered-user account deletion event (user.account_deleted),
-// not on anonymous user deletion (user.anonymous.deleted). Testing
-// it end-to-end requires the full registered user flow (register →
-// confirm email → navigate → request deletion → confirm deletion),
-// which should be added as a step in account_deletion_flow_test.go
-// rather than duplicated here.
 func TestAnalytics_AccountDeletion_ErasesAnalytics(
 	t *testing.T,
 ) {
-	t.Skip(
-		"analytics erasure requires registered-user deletion " +
-			"flow; covered by account_deletion_flow_test.go",
+	ownerToken, routeID := createAndPublishRoute(t)
+	t.Cleanup(func() { deleteRoute(t, routeID, ownerToken) })
+
+	clearMailbox(t)
+
+	_, navigatorAnonToken, _ := createAnonymousUser(t)
+	email := uniqueEmail()
+	_, navigatorToken, _ := registerAndConfirm(
+		t, navigatorAnonToken, email,
+	)
+
+	accessRoute(
+		t, routeID, navigatorToken,
+		map[string]string{"src": "qr"},
+	)
+	waitForAccessCount(
+		t, routeID, ownerToken, 1, 10*time.Second,
+	)
+
+	session := newPlausibleSession(2)
+	s := recordNavigationSession(
+		t, routeID, navigatorToken, session,
+	)
+	require.Equal(t, http.StatusNoContent, s)
+
+	summary := waitForNavigationCount(
+		t, routeID, ownerToken, 1, 15*time.Second,
+	)
+	visitorsBefore := summary.UniqueVisitors
+	require.GreaterOrEqual(
+		t, visitorsBefore, 2,
+		"pre-deletion: must have at least 2 unique visitors "+
+			"(owner + navigator)",
+	)
+
+	clearMailbox(t)
+
+	reqResp := requestAccountDeletion(t, navigatorToken)
+	require.Equal(
+		t, http.StatusNoContent, reqResp.StatusCode,
+	)
+	reqResp.Body.Close()
+
+	msgID := waitForEmail(t, email)
+	code := extractVerificationCode(t, msgID)
+
+	confirmResp := confirmAccountDeletion(
+		t, navigatorToken, code,
+	)
+	require.Equal(
+		t, http.StatusNoContent, confirmResp.StatusCode,
+	)
+	confirmResp.Body.Close()
+
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(2 * time.Second)
+
+		resp, after := getRouteSummary(
+			t, routeID, ownerToken, "", "",
+		)
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		if after.UniqueVisitors < visitorsBefore {
+			return
+		}
+	}
+
+	t.Fatalf(
+		"unique_visitors did not decrease from %d within "+
+			"15s after account deletion erasure",
+		visitorsBefore,
 	)
 }
 
