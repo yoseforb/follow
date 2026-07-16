@@ -126,12 +126,12 @@ func TestRouteAccess_AccessModeBreakdown(t *testing.T) {
 		modeMap[m.Mode] = m.Count
 	}
 
-	assert.GreaterOrEqual(
-		t, modeMap["download"], 1,
+	assert.Equal(
+		t, 1, modeMap["download"],
 		"include_images=true must count as download",
 	)
-	assert.GreaterOrEqual(
-		t, modeMap["view"], 1,
+	assert.Equal(
+		t, 1, modeMap["view"],
 		"access without include_images must count as view",
 	)
 }
@@ -495,9 +495,9 @@ func TestAnalytics_E2E_FullLifecycle(t *testing.T) {
 		t, routeID, ownerToken, 3, 10*time.Second,
 	)
 
-	assert.GreaterOrEqual(
-		t, summary.AccessCount, 3,
-		"must have at least 3 accesses",
+	assert.Equal(
+		t, 3, summary.AccessCount,
+		"must have exactly 3 accesses",
 	)
 	assert.Equal(
 		t, 2, summary.NavigationsCompleted,
@@ -524,8 +524,8 @@ func TestAnalytics_E2E_FullLifecycle(t *testing.T) {
 	for _, s := range summary.Sources {
 		sourceMap[s.Source] = s.Count
 	}
-	assert.GreaterOrEqual(t, sourceMap["qr"], 2)
-	assert.GreaterOrEqual(t, sourceMap["wa"], 1)
+	assert.Equal(t, 2, sourceMap["qr"])
+	assert.Equal(t, 1, sourceMap["wa"])
 
 	resp, hourly := getRouteHourlyStats(
 		t, routeID, ownerToken, "1",
@@ -536,9 +536,9 @@ func TestAnalytics_E2E_FullLifecycle(t *testing.T) {
 	for _, p := range hourly.Points {
 		totalHourlyAccess += p.AccessCount
 	}
-	assert.GreaterOrEqual(
-		t, totalHourlyAccess, 3,
-		"hourly stats must reflect all accesses",
+	assert.Equal(
+		t, 3, totalHourlyAccess,
+		"hourly stats must reflect exactly 3 accesses",
 	)
 
 	adminTok := adminToken(t)
@@ -571,7 +571,7 @@ func TestAnalytics_E2E_FullLifecycle(t *testing.T) {
 	for _, r := range ownerSummaries.Routes {
 		if r.RouteID == routeID {
 			found = true
-			assert.GreaterOrEqual(t, r.AccessCount, 3)
+			assert.Equal(t, 3, r.AccessCount)
 			assert.Equal(t, 2, r.NavigationsCompleted)
 			assert.Equal(t, 1, r.NavigationsAbandoned)
 		}

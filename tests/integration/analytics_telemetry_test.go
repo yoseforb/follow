@@ -72,6 +72,15 @@ func TestRecordNavigationSession_Idempotent(t *testing.T) {
 		t, http.StatusNoContent, status2,
 		"idempotent retry must also return 204",
 	)
+
+	summary := waitForNavigationCount(
+		t, routeID, ownerToken, 1, 15*time.Second,
+	)
+	assert.Equal(
+		t, 1, summary.NavigationsCompleted,
+		"idempotent retry must not double-count — "+
+			"only 1 navigation should exist",
+	)
 }
 
 func TestRecordNavigationSession_RouteNotFound(t *testing.T) {

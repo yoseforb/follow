@@ -37,14 +37,9 @@ func TestPlatformDailyStats_NonAdmin_Gets403(t *testing.T) {
 	resp, _ := getPlatformDailyStats(t, token, "", "")
 	defer resp.Body.Close()
 
-	assert.Contains(
-		t,
-		[]int{
-			http.StatusForbidden,
-			http.StatusUnauthorized,
-		},
-		resp.StatusCode,
-		"non-admin must get 401 or 403",
+	assert.Equal(
+		t, http.StatusForbidden, resp.StatusCode,
+		"valid JWT without admin:analytics scope must get 403",
 	)
 }
 
@@ -98,14 +93,9 @@ func TestPlatformKillGates_NonAdmin_Gets403(t *testing.T) {
 	resp, _ := getPlatformKillGates(t, token, "", "")
 	defer resp.Body.Close()
 
-	assert.Contains(
-		t,
-		[]int{
-			http.StatusForbidden,
-			http.StatusUnauthorized,
-		},
-		resp.StatusCode,
-		"non-admin must get 401 or 403",
+	assert.Equal(
+		t, http.StatusForbidden, resp.StatusCode,
+		"valid JWT without admin:analytics scope must get 403",
 	)
 }
 
