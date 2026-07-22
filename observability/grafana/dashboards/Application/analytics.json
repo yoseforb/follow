@@ -1,0 +1,526 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 200,
+      "title": "Kill Gates",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "Target >= 70%. From pre-aggregated route_daily_stats (implausible sessions already excluded).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 70 }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "table",
+          "rawSql": "SELECT\n  CASE WHEN SUM(navigations_completed + navigations_abandoned) > 0\n    THEN SUM(navigations_completed)::float / SUM(navigations_completed + navigations_abandoned) * 100\n    ELSE 0\n  END AS \"completion_rate\"\nFROM analytics.route_daily_stats\nWHERE $__timeFilter(date)",
+          "refId": "A"
+        }
+      ],
+      "title": "Guest Completion Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "North star metric. Retention-window only (navigation_sessions purged after 365 days).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "table",
+          "rawSql": "SELECT COUNT(*) AS \"completed_arrivals\"\nFROM analytics.navigation_sessions\nWHERE outcome = 'completed'\n  AND plausibility = 'plausible'\n  AND $__timeFilter(started_at)",
+          "refId": "A"
+        }
+      ],
+      "title": "Plausible Completed Arrivals",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "Distinct route owners with at least one access in the selected period.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "table",
+          "rawSql": "SELECT COUNT(DISTINCT owner_id) AS \"active_hosts\"\nFROM analytics.route_daily_stats\nWHERE access_count > 0\n  AND $__timeFilter(date)",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Hosts",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "Navigator-first route creations / total route creations. Viral loop signal.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": {
+            "steps": [
+              { "color": "yellow", "value": null },
+              { "color": "green", "value": 10 }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "table",
+          "rawSql": "SELECT\n  CASE WHEN SUM(routes_created) > 0\n    THEN SUM(routes_created_navigator_first)::float / SUM(routes_created) * 100\n    ELSE 0\n  END AS \"loop_rate\"\nFROM analytics.platform_daily_stats\nWHERE $__timeFilter(date)",
+          "refId": "A"
+        }
+      ],
+      "title": "Conversion Loop Rate",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 201,
+      "title": "Growth Curves",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 0, "showPoints": "never", "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 7 },
+      "id": 5,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  users_created AS \"Created\",\n  users_registered AS \"Registered\",\n  users_deleted AS \"Deleted\"\nFROM analytics.platform_daily_stats\nWHERE $__timeFilter(date)\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Users per Day",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 0, "showPoints": "never", "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 7 },
+      "id": 6,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  routes_created AS \"Created\",\n  routes_published AS \"Published\",\n  routes_deleted AS \"Deleted\"\nFROM analytics.platform_daily_stats\nWHERE $__timeFilter(date)\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Routes per Day",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "Routes created by users who had previously navigated someone else's route.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20 },
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Net Users" },
+            "properties": [{ "id": "custom.drawStyle", "value": "line" }, { "id": "custom.fillOpacity", "value": 0 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Net Routes" },
+            "properties": [{ "id": "custom.drawStyle", "value": "line" }, { "id": "custom.fillOpacity", "value": 0 }]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 7 },
+      "id": 7,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  routes_created_navigator_first AS \"Navigator-First\",\n  users_created - users_deleted AS \"Net Users\",\n  routes_created - routes_deleted AS \"Net Routes\"\nFROM analytics.platform_daily_stats\nWHERE $__timeFilter(date)\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Viral Loop & Net Growth",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 202,
+      "title": "Route Usage",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 16 },
+      "id": 8,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  SUM(access_count) AS \"Accesses\"\nFROM analytics.route_daily_stats\nWHERE $__timeFilter(date)\nGROUP BY date\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Total Accesses per Day",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 16 },
+      "id": 9,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  SUM(unique_visitors) AS \"Unique Visitors\"\nFROM analytics.route_daily_stats\nWHERE $__timeFilter(date)\nGROUP BY date\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Unique Visitors per Day",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 0, "showPoints": "never", "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 16 },
+      "id": 10,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  SUM(anonymous_visitors) AS \"Anonymous\",\n  SUM(registered_visitors) AS \"Registered\"\nFROM analytics.route_daily_stats\nWHERE $__timeFilter(date)\nGROUP BY date\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Anonymous vs Registered Visitors",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20 },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 16 },
+      "id": 11,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  SUM(saves) AS \"Saves\"\nFROM analytics.route_daily_stats\nWHERE $__timeFilter(date)\nGROUP BY date\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Saves per Day",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 203,
+      "title": "Navigation Quality",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 0, "showPoints": "never", "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 25 },
+      "id": 12,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  SUM(navigations_completed) AS \"Completed\",\n  SUM(navigations_abandoned) AS \"Abandoned\"\nFROM analytics.route_daily_stats\nWHERE $__timeFilter(date)\nGROUP BY date\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Completed vs Abandoned",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "decimals": 1,
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 70 }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 25 },
+      "id": 13,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  CASE WHEN SUM(navigations_completed + navigations_abandoned) > 0\n    THEN SUM(navigations_completed)::float / SUM(navigations_completed + navigations_abandoned) * 100\n    ELSE NULL\n  END AS \"Completion Rate\"\nFROM analytics.route_daily_stats\nWHERE $__timeFilter(date)\nGROUP BY date\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Completion Rate Trend",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "Weighted average across all routes (weighted by completed navigations per route).",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 },
+          "decimals": 0,
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 25 },
+      "id": 14,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT date AS time,\n  SUM(avg_duration_seconds::bigint * navigations_completed)\n    / NULLIF(SUM(navigations_completed), 0) AS \"Avg Duration\"\nFROM analytics.route_daily_stats\nWHERE $__timeFilter(date)\nGROUP BY date\nORDER BY date",
+          "refId": "A"
+        }
+      ],
+      "title": "Avg Navigation Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "From navigation_sessions directly. Retention-window only (purged after 365 days).",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 0, "showPoints": "never", "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 25 },
+      "id": 15,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT\n  $__timeGroup(started_at, '1d') AS time,\n  COUNT(*) FILTER (WHERE plausibility = 'plausible') AS \"Plausible\",\n  COUNT(*) FILTER (WHERE plausibility = 'too_fast_total') AS \"Too Fast (Total)\",\n  COUNT(*) FILTER (WHERE plausibility = 'too_fast_pace') AS \"Too Fast (Pace)\"\nFROM analytics.navigation_sessions\nWHERE $__timeFilter(started_at)\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Plausibility Breakdown",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "id": 204,
+      "title": "Top Routes",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "Top 10 routes by access count in the selected period.",
+      "fieldConfig": {
+        "defaults": { "decimals": 0, "unit": "short" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "completion_rate" },
+            "properties": [{ "id": "unit", "value": "percent" }, { "id": "decimals", "value": 1 }]
+          }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 34 },
+      "id": 16,
+      "options": { "showHeader": true, "sortBy": [{ "desc": true, "displayName": "access_count" }] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "table",
+          "rawSql": "SELECT\n  route_id,\n  SUM(access_count) AS access_count,\n  SUM(unique_visitors) AS unique_visitors,\n  SUM(navigations_completed) AS navigations_completed,\n  SUM(navigations_abandoned) AS navigations_abandoned,\n  CASE WHEN SUM(navigations_completed + navigations_abandoned) > 0\n    THEN ROUND(SUM(navigations_completed)::numeric / SUM(navigations_completed + navigations_abandoned) * 100, 1)\n    ELSE 0\n  END AS completion_rate\nFROM analytics.route_daily_stats\nWHERE $__timeFilter(date)\nGROUP BY route_id\nORDER BY access_count DESC\nLIMIT 10",
+          "refId": "A"
+        }
+      ],
+      "title": "Top 10 Routes by Access Count",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 42 },
+      "id": 205,
+      "title": "Traffic Sources",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "From analytics.events (retention-window only, purged after 365 days).",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 43 },
+      "id": 17,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] },
+        "reduceOptions": { "calcs": ["sum"] }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "table",
+          "rawSql": "SELECT\n  COUNT(*) FILTER (WHERE COALESCE(properties->>'source', 'direct') = 'direct') AS \"Direct\",\n  COUNT(*) FILTER (WHERE properties->>'source' = 'qr') AS \"QR\",\n  COUNT(*) FILTER (WHERE properties->>'source' = 'wa') AS \"WhatsApp\",\n  COUNT(*) FILTER (WHERE properties->>'source' = 'airbnb') AS \"Airbnb\",\n  COUNT(*) FILTER (WHERE properties->>'source' = 'email') AS \"Email\"\nFROM analytics.events\nWHERE event_type = 'route.accessed'\n  AND $__timeFilter(occurred_at)",
+          "refId": "A"
+        }
+      ],
+      "title": "Source Distribution",
+      "type": "piechart"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "From analytics.events (retention-window only, purged after 365 days).",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 0, "showPoints": "never", "stacking": { "mode": "normal" } },
+          "decimals": 0,
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 10, "x": 8, "y": 43 },
+      "id": 18,
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "time_series",
+          "rawSql": "SELECT\n  $__timeGroup(occurred_at, '1d') AS time,\n  COUNT(*) FILTER (WHERE COALESCE(properties->>'source', 'direct') = 'direct') AS \"Direct\",\n  COUNT(*) FILTER (WHERE properties->>'source' = 'qr') AS \"QR\",\n  COUNT(*) FILTER (WHERE properties->>'source' = 'wa') AS \"WhatsApp\",\n  COUNT(*) FILTER (WHERE properties->>'source' = 'airbnb') AS \"Airbnb\",\n  COUNT(*) FILTER (WHERE properties->>'source' = 'email') AS \"Email\"\nFROM analytics.events\nWHERE event_type = 'route.accessed'\n  AND $__timeFilter(occurred_at)\nGROUP BY 1\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Source Trends",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "postgresql" },
+      "description": "View (metadata only) vs Download (with images for navigation). From analytics.events.",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 43 },
+      "id": 19,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] },
+        "reduceOptions": { "calcs": ["sum"] }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgresql" },
+          "format": "table",
+          "rawSql": "SELECT\n  COUNT(*) FILTER (WHERE (properties->>'include_images')::boolean IS TRUE) AS \"Download\",\n  COUNT(*) FILTER (WHERE (properties->>'include_images')::boolean IS NOT TRUE) AS \"View\"\nFROM analytics.events\nWHERE event_type = 'route.accessed'\n  AND $__timeFilter(occurred_at)",
+          "refId": "A"
+        }
+      ],
+      "title": "View vs Download",
+      "type": "piechart"
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 41,
+  "tags": ["analytics", "business"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30d", "to": "now" },
+  "title": "Analytics",
+  "uid": "analytics-dashboard"
+}
