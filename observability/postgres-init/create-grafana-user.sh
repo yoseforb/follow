@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'grafana') THEN
+    CREATE USER grafana WITH PASSWORD '${GRAFANA_POSTGRES_PASSWORD}';
+  END IF;
+END
+\$\$;
+
+-- Read-only access to all application schemas
+GRANT USAGE ON SCHEMA "user" TO grafana;
+GRANT USAGE ON SCHEMA route TO grafana;
+GRANT USAGE ON SCHEMA images TO grafana;
+GRANT USAGE ON SCHEMA analytics TO grafana;
+GRANT SELECT ON ALL TABLES IN SCHEMA "user" TO grafana;
+GRANT SELECT ON ALL TABLES IN SCHEMA route TO grafana;
+GRANT SELECT ON ALL TABLES IN SCHEMA images TO grafana;
+GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO grafana;
+
+-- Auto-grant SELECT on future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA "user" GRANT SELECT ON TABLES TO grafana;
+ALTER DEFAULT PRIVILEGES IN SCHEMA route GRANT SELECT ON TABLES TO grafana;
+ALTER DEFAULT PRIVILEGES IN SCHEMA images GRANT SELECT ON TABLES TO grafana;
+ALTER DEFAULT PRIVILEGES IN SCHEMA analytics GRANT SELECT ON TABLES TO grafana;
+SQL
